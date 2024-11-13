@@ -1,10 +1,8 @@
 package crawl;
 
-import Email.EmailProperty;
 import Email.EmailService;
 import Email.IJavaMail;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import database.JDBCUtil;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -18,14 +16,19 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
 public class CrawlProduct {
 
     // 1. Khởi tạo các biến trong bảng config
-    private static String sourceUrl;
-    private static String exportLocation;
+    private static String sourceUrl; // Source url từ config
+    private static String exportLocation; // Địa chỉ để lưu file từ config
+    private static String email; // Email từ config
     private static final String BASE_URL = "https://laptopusa.vn";
-    // Biến theo dõi trạng thái email
-    private static boolean successEmailSent = false;
     // Tên file
     private static String fileName;
     private static String fileName_2;
@@ -37,46 +40,46 @@ public class CrawlProduct {
     private static final IJavaMail emailService = new EmailService();
 
     public static void main(String[] args) {
-        System.out.println("Loading configuration...");
+        System.out.println("Loading configuration from database...");
 
-        // 1.1 Tải cấu hình từ file YAML
-        if (!loadConfig("D:/warehouse/control/config.yaml.txt")) {
+        // 2. Tải/lấy cấu hình từ config trong database
+        if (!loadConfigFromDatabase()) {
             System.err.println("Failed to load configuration.");
             return;
         }
-
         System.out.println("Starting the scraping process...\n");
         List<Map<String, String>> allProducts = new ArrayList<>();
         int page = 1;
 
-        // 2. Duyệt qua các liên kết trong trang laptopusa.vn
+        // 3. Duyệt qua các liên kết trong trang laptopusa.vn
         while (true) {
             String collectionUrl = sourceUrl + "?page=" + page;
             System.out.println("Fetching product links from " + collectionUrl + "...");
 
-            // 3. Lấy ra danh sách liên kết của các sản phẩm ( page )
+            // 4. Lấy ra danh sách liên kết của các sản phẩm ( page )
             List<String> productLinks = getProductLinks(collectionUrl);
             // Nếu không có thì break
             if (productLinks.isEmpty()) {
                 System.out.println("No more products found on page " + page + ". Stopping.");
 //                sendErrorEmail("No products found on page " + page);
+//                logErrorToYAML("Không tìm thấy dữ liệu của sản phẩm");
+
                 break;
             }
 
-            // 4. Duyệt vòng lặp qua danh sách liên kết, lấy dữ liệu các sản phẩm
+            // 5. Duyệt vòng lặp qua danh sách liên kết, lấy dữ liệu các sản phẩm
             for (String link : productLinks) {
                 Map<String, String> productDetails = scrapeProductDetails(link);
                 if (productDetails != null) {
                     allProducts.add(productDetails);
                 }
             }
-            // 5. Nếu không có dữ liệu sản phẩm thì gửi thông báo lỗi qua email và break
+            // Nếu không có dữ liệu sản phẩm thì (6) gửi thông báo lỗi qua email, ghi log error và break
             // Nếu có dữ liệu sản phẩm thì tiếp tục
             if (allProducts.isEmpty()) {
                 System.out.println("No product data found from the links. Sending error email...");
                 sendErrorEmail("No product data found on page " + page);
-
-                logErrorToYAML("Không tìm thấy dữ liệu của sản phẩm");
+                logErrorToDatabase("Không tìm thấy dữ liệu của sản phẩm");
 
                 break;
             }
@@ -84,34 +87,51 @@ public class CrawlProduct {
 
         }
 
-        // Xuất File ( bao gồm bước 6 và 7 )
+        // Xuất File ( bao gồm 7. thêm dữ liệu vào file và 8. xuất ra file csv )
         exportToCSV(allProducts);
-        // 8. Ghi log sau khi export CSV thành công
-        logSuccessToYAML(fileName_2, count, fileSizeKB);
+        // 9. Gửi email thông báo xuất file thành công
+        sendSuccessEmail();
+        // 10. Ghi log sau khi export CSV thành công
+        logSuccessToDatabase(fileName_2, count, fileSizeKB);
         System.out.println("\nScraping completed.");
     }
 
     // Tải cấu hình từ file config
     // Lấy địa chỉ lưu file trong config và gán cho exportLocation
-    private static boolean loadConfig(String filePath) {
+    private static boolean loadConfigFromDatabase() {
+        Connection conn = null;
+
         try {
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            Map<String, Object> config = mapper.readValue(new File(filePath), Map.class);
+            conn = JDBCUtil.getConnection();
+            Statement stmt = conn.createStatement();
 
-            // Lấy thông tin cấu hình từ file config
-            sourceUrl = (String) ((Map) config.get("ID_1")).get("Source");
-            exportLocation = (String) ((Map) config.get("ID_19")).get("Source_File_Location");
-            new File(exportLocation).mkdirs();
+            // Thực thi câu truy vấn để lấy dữ liệu cấu hình ( từ id 19 )
+            ResultSet rs = stmt.executeQuery("SELECT source, source_location FROM control WHERE id = '19'");
 
-            return true;
-        } catch (IOException e) {
-            System.err.println("Error reading YAML config: " + e.getMessage());
-//            sendErrorEmail("Error reading YAML config: " + e.getMessage());
+            if (rs.next()) {
+                // Gán các giá trị từ kết quả truy vấn
+                // Đường dẫn source
+                sourceUrl = rs.getString("source");
+                // Địa chỉ lưu file csv
+                exportLocation = rs.getString("source_location");
+
+                // Tạo thư mục xuất nếu nó chưa tồn tại
+                new File(exportLocation).mkdirs();
+                return true;
+            } else {
+                System.err.println("Không tìm thấy dữ liệu cấu hình trong cơ sở dữ liệu.");
+            }
+        } catch (Exception e) {
+            System.err.println("Lỗi khi tải cấu hình từ cơ sở dữ liệu: " + e.getMessage());
+        } finally {
+            // Đóng kết nối đến cơ sở dữ liệu
+            JDBCUtil.closeConnection(conn);
         }
         return false;
     }
 
-    // (3) Phương thức lấy ra danh sách liên kết của các sản phẩm
+
+    // (4) Phương thức lấy ra danh sách liên kết của các sản phẩm
     private static List<String> getProductLinks(String url) {
         List<String> productLinks = new ArrayList<>();
         try {
@@ -136,7 +156,7 @@ public class CrawlProduct {
         return productLinks;
     }
 
-    // (4) Phương thức Lấy dữ liệu chi tiết của sản phẩm
+    // (5)  Phương thức Lấy dữ liệu chi tiết của sản phẩm
     private static Map<String, String> scrapeProductDetails(String url) {
         // Tạo một map để lưu trữ chi tiết sản phẩm với thứ tự bảo toàn
         Map<String, String> productDetails = new LinkedHashMap<>();
@@ -215,16 +235,15 @@ public class CrawlProduct {
         return productDetails;
     }
 
-    // Xuất dữ liệu ra file CSV
-    // Gốm (6) lấy địa chỉ file CSV trong config và
     // (7) Thêm dữ liệu vào file
+    // (8) Xuất dữ liệu ra file CSV
     private static void exportToCSV(List<Map<String, String>> products) {
         if (products.isEmpty()) {
             System.out.println("No data to export.");
             return;
         }
 
-        // 6. Lấy địa chỉ file CSV trong config
+        // Đặt tên file theo đinh dạng data_time_.csv
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
         String timestamp = LocalDateTime.now().format(formatter);
         fileName = exportLocation + "\\"+"data_" + timestamp + ".csv";
@@ -235,8 +254,9 @@ public class CrawlProduct {
                 "Hệ điều hành", "Bảo hành", "Ngày nhập", "Ngày hết hạn"
         );
 
-        count = 0;
-        // 7. Thêm dữ liệu vào File
+        count = 0; // Đếm số dòng đã ghi
+        //  (7) Thêm dữ liệu vào File
+        //  (8) Xuất dữ liệu ra file csv tới địa chỉ trong config
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Ghi tiêu đề vào file CSV
             fileWriter.write(String.join(",", headersList) + "\n");
@@ -265,115 +285,135 @@ public class CrawlProduct {
 
         } catch (IOException e) {
             System.err.println("Error writing to CSV file: " + e.getMessage());
-            sendErrorEmail("Error writing to CSV file: " + e.getMessage());
+//            sendErrorEmail("Error writing to CSV file: " + e.getMessage());
         }
     }
 
+    // Lấy địa chỉ email từ config
+    private static String getEmailFromDatabase() {
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+         email = null;
+        try {
+            conn = JDBCUtil.getConnection();
 
+            // Truy vấn lấy email từ bảng control ( config )
+            String sql = "SELECT email FROM control WHERE id = 19";
+            pstmt = conn.prepareStatement(sql);
+
+            rs = pstmt.executeQuery();
+            if (rs.next()) {
+                email = rs.getString("email");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching email from database: " + e.getMessage());
+        } finally {
+            JDBCUtil.closeConnection(conn); // Đóng kết nối
+        }
+        return email;
+    }
+
+    // (9) Gửi email báo thành công
+    private static void sendSuccessEmail() {
+        email = getEmailFromDatabase(); // Lấy email từ config
+        if (email == null) {
+            System.err.println("Failed to retrieve email from database.");
+            return;
+        }
+
+        System.out.println("Send success notification email success");
+
+        String subject = "Success Notification: Crawl data "; // Tiêu đề
+        String message = "Scraping completed successfully!\n\n" + // Nội dung
+                "Total products scraped: " + count + "\n" +
+                "Export file location: " + fileName + "\n" +
+                "File name: " + fileName_2 + "\n" +
+                "Completion time: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        boolean sent = emailService.send(email, subject, message);
+        if (!sent) {
+            System.err.println("Failed to send success notification email");
+        }
+    }
+
+    // (6) Gửi email báo lỗi
     private static void sendErrorEmail(String errorMessage) {
-        String subject = "Error Notification: Crawl Laptopusa";
-        String message = "An error occurred during scraping:\n\n" + errorMessage;
-        boolean sent = emailService.send(EmailProperty.APP_EMAIL, subject, message);
+        email = getEmailFromDatabase(); // Lấy email từ config
+        if (email == null) {
+            System.err.println("Failed to retrieve email from database.");
+            return;
+        }
+
+        System.out.println("Send error notification email success");
+        String subject = "Error Notification: Crawl Laptopusa"; // Tiêu đề
+        String message = "An error occurred during scraping:\n\n" + errorMessage; // Nội dung
+        boolean sent = emailService.send(email, subject, message);
         if (!sent) {
             System.err.println("Failed to send error notification email");
         }
     }
 
-    // Ghi log nếu thành công export ra file csv
-    private static void logSuccessToYAML(String fileName, int count, double fileSizeKB) {
-        String filePath = "D:/warehouse/control/log.yaml.txt";
+
+
+    // (10) Ghi log nếu thành công export ra file csv
+    private static void logSuccessToDatabase(String fileName, int count, double fileSizeKB) {
+        Connection conn = null;
+        PreparedStatement pstmt = null;
         try {
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            Map<String, Object> yamlData;
+            conn = JDBCUtil.getConnection();
 
-            // Đọc nội dung hiện có từ file YAML (nếu có)
-            File file = new File(filePath);
-            if (file.exists()) {
-                yamlData = mapper.readValue(file, Map.class);
-            } else {
-                yamlData = new HashMap<>();
-            }
+            // Chuẩn bị câu lệnh SQL cho việc chèn bản ghi thành công vào bảng log
+            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            pstmt = conn.prepareStatement(sql);
 
-            // Lấy danh sách các bản ghi nếu có
-            List<Map<String, Object>> logs = (List<Map<String, Object>>) yamlData.getOrDefault("file_log", new ArrayList<>());
-
-            // Lấy ID lớn nhất hiện tại và tăng ID cho bản ghi mới
-            int maxId = logs.stream()
-                    .map(log -> (int) log.get("ID"))
-                    .max(Integer::compare)
-                    .orElse(0);
-
-            // Tạo bản ghi mới
-            Map<String, Object> newLog = new LinkedHashMap<>();
-            newLog.put("ID", maxId + 1);
-            newLog.put("ID_config", 1);
-            newLog.put("filename", fileName);
-            newLog.put("date", LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-            newLog.put("event", "Data export successful");
-            newLog.put("status", "SC");
-            newLog.put("count", count);
-            newLog.put("file_size (kb)", String.format("%.2f", fileSizeKB)); // làm tròn đến 2 chữ số thập phân
-            newLog.put("dt_update", LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy")));
-
-            // Thêm bản ghi mới vào danh sách và ghi lại vào YAML
-            logs.add(newLog);
-            yamlData.put("file_log", logs);
-            mapper.writeValue(file, yamlData);
-
-            System.out.println("Logged success to YAML file successfully.");
-        } catch (IOException e) {
-            System.err.println("Error writing to YAML file: " + e.getMessage());
-//            sendErrorEmail("Error writing to YAML file: " + e.getMessage());
+            pstmt.setInt(1, 19);
+            pstmt.setString(2, fileName);
+            pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
+            pstmt.setString(4, "Data export successful");
+            pstmt.setString(5, "SC");
+            pstmt.setInt(6, count);
+            pstmt.setDouble(7, fileSizeKB);
+            pstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
+            pstmt.setString(9, "");
+            pstmt.executeUpdate();
+            System.out.println("Logged success to database successfully.");
+        } catch (SQLException e) {
+            System.err.println("Error logging to database: " + e.getMessage());
+        } finally {
+            JDBCUtil.closeConnection(conn); // Đóng kết nối
         }
     }
 
-
-    // Ghi log nếu có lỗi
-    private static void logErrorToYAML(String errorMessage) {
-        String filePath = "D:/warehouse/control/log.yaml.txt";
+    // (10) Ghi log nếu có lỗi
+    private static void logErrorToDatabase(String errorMessage) {
+        Connection conn = null;
+        PreparedStatement pstmt = null;
         try {
-            // Đọc nội dung hiện có từ file YAML
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            Map<String, Object> yamlData;
+            conn = JDBCUtil.getConnection();
 
-            File file = new File(filePath);
-            if (file.exists()) {
-                yamlData = mapper.readValue(file, Map.class);
-            } else {
-                yamlData = new HashMap<>();
-            }
+            // Insert ghi lỗi vào bảng log
+            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            pstmt = conn.prepareStatement(sql);
 
-            // Tạo danh sách các bản ghi nếu chưa có
-            List<Map<String, Object>> logs = (List<Map<String, Object>>) yamlData.getOrDefault("file_log", new ArrayList<>());
+            pstmt.setInt(1, 19); // ID_config giả định là 1
+            pstmt.setString(2, "");
+            pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
+            pstmt.setString(4, "Product data not found");
+            pstmt.setString(5, "ER");
+            pstmt.setNull(6, count);
+            pstmt.setNull(7, (int) fileSizeKB);
+            pstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
+            pstmt.setString(9, errorMessage);
 
-            // Tìm ID hiện tại lớn nhất và tăng ID cho bản ghi mới
-            int maxId = logs.stream()
-                    .map(log -> (int) log.get("ID"))
-                    .max(Integer::compare)
-                    .orElse(0);
-
-            // Tạo bản ghi mới
-            Map<String, Object> newLog = new LinkedHashMap<>();
-            newLog.put("ID", maxId + 1);
-            newLog.put("ID_config", 1);
-            newLog.put("filename", "");
-            newLog.put("date", LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
-            newLog.put("event", "Product data not found");
-            newLog.put("status", "ER");
-            newLog.put("count", count);
-            newLog.put("file_size (kb)", String.format("%.2f", fileSizeKB)); // làm tròn đến 2 chữ số thập phân
-            newLog.put("dt_update", LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy")));
-            newLog.put("error_message", errorMessage);
-
-            // Thêm bản ghi mới vào danh sách và lưu lại vào file YAML
-            logs.add(newLog);
-            yamlData.put("file_log", logs);
-            mapper.writeValue(file, yamlData);
-
-            System.out.println("Logged error to YAML file successfully.");
-        } catch (IOException e) {
-            System.err.println("Error writing to YAML file: " + e.getMessage());
+            pstmt.executeUpdate();
+            System.out.println("Logged error to database successfully.");
+        } catch (SQLException e) {
+            System.err.println("Error logging to database: " + e.getMessage());
+        } finally {
+            JDBCUtil.closeConnection(conn); // Đóng kết nối
         }
     }
-
 }
+
