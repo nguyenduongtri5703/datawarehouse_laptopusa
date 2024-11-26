@@ -8,6 +8,47 @@ import java.time.LocalDateTime;
 
 public class DataProcessing {
 
+    public static void loadToStaging() {
+        // 3.1. Kết nối cơ sở dữ liệu
+        try (Connection connection = JDBCUtil.getConnection()) {
+            System.out.println("Kết nối cơ sở dữ liệu thành công!");
+
+            // 3.2. Tìm file data mới nhất
+            String latestFile = findLatestFile(connection);
+
+            if (latestFile == null) {
+                // 3.2.1.1. Ghi log khi không tìm thấy file data
+                logError(connection, latestFile, "Không tìm thấy file data");
+                sendEmail("Không tìm thấy file data", "Hệ thống không tìm thấy file data mới nhất để load.");
+            } else {
+                System.out.println("File mới nhất: " + latestFile);
+            }
+
+            // 3.3. Kiểm tra procedure và gọi procedure load dữ liệu vào laptop_data_temp
+            loadDataProcedure(connection, latestFile);
+
+            // 3.4. Gọi procedure lọc sản phẩm từ bảng laptop_data_temp
+            filterProductProcedure(connection, latestFile);
+
+            // 3.4.1. Kiểm tra kết quả sau khi load dữ liệu vào laptop_data_temp
+            checkDataLoaded(connection, latestFile);
+
+            // 3.4.2. Kiểm tra dữ liệu rỗng
+            handleNullData(connection, latestFile);
+
+            // 3.5. Gọi procedure load dữ liệu vào các bảng dim
+            populateDimensions(connection, latestFile);
+
+            // 3.6. Gọi procedure cập nhật lại dữ liệu cho bảng staging_laptop_data
+            updateStagingLaptopData(connection, latestFile);
+
+            // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
+            logSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
     public static void main(String[] args) {
         try (Connection connection = JDBCUtil.getConnection()) {
             System.out.println("Kết nối cơ sở dữ liệu thành công!");
@@ -51,7 +92,7 @@ public class DataProcessing {
     // 3.2. Tìm file data mới nhất
     private static String findLatestFile(Connection connection) {
         String queryFindLatestFile = """
-                SELECT file_name 
+                SELECT filename 
                 FROM log 
                 WHERE event = 'crawler data' 
                   AND status = 'SU' 
