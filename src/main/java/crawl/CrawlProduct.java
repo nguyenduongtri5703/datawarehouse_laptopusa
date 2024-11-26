@@ -40,7 +40,10 @@ public class CrawlProduct {
     private static final IJavaMail emailService = new EmailService();
 
     public static void main(String[] args) {
-        System.out.println("Loading configuration from database...");
+    }
+        public static void runCrawl() {
+
+            System.out.println("Loading configuration from database...");
 
         // 2. Tải/lấy cấu hình từ config trong database
         if (!loadConfigFromDatabase()) {
