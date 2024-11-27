@@ -18,7 +18,7 @@ public class LoadToWarehouse {
             }
 
             // 4.2 Kiểm tra trạng thái "Transform field"
-            String transformCheckQuery = "SELECT * FROM log WHERE event = 'Transform field' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
+            String transformCheckQuery = "SELECT * FROM log WHERE event = 'transform field' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
             try (PreparedStatement transformCheckStmt = connection.prepareStatement(transformCheckQuery);
                  ResultSet transformCheckResult = transformCheckStmt.executeQuery()) {
 
