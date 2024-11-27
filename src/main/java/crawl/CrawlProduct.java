@@ -373,8 +373,8 @@ public class CrawlProduct {
             pstmt.setInt(1, 19);
             pstmt.setString(2, fileName);
             pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
-            pstmt.setString(4, "Data export successful");
-            pstmt.setString(5, "SC");
+            pstmt.setString(4, "crawler data");
+            pstmt.setString(5, "SU");
             pstmt.setInt(6, count);
             pstmt.setDouble(7, fileSizeKB);
             pstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
@@ -403,7 +403,7 @@ public class CrawlProduct {
             pstmt.setInt(1, 19); // ID_config giả định là 1
             pstmt.setString(2, "");
             pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
-            pstmt.setString(4, "Product data not found");
+            pstmt.setString(4, "crawler data");
             pstmt.setString(5, "ER");
             pstmt.setNull(6, count);
             pstmt.setNull(7, (int) fileSizeKB);
