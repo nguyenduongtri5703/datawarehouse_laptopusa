@@ -12,7 +12,7 @@ public class Test {
 //        Connection connection = JDBCUtil.getConnection();
 
         //2. Crawl data
-        //CrawlProduct.runCrawl();
+//        CrawlProduct.runCrawl();
 
         //3. Load to staging
         DataProcessing.loadToStaging();

@@ -92,17 +92,19 @@ public class DataProcessing {
     // 3.2. Tìm file data mới nhất
     private static String findLatestFile(Connection connection) {
         String queryFindLatestFile = """
-                SELECT filename 
-                FROM log 
-                WHERE event = 'crawler data' 
-                  AND status = 'SU' 
-                ORDER BY dt_update DESC 
-                LIMIT 1""";
+            SELECT filename 
+            FROM log 
+            WHERE event = 'crawler data' 
+              AND status = 'SU' 
+            ORDER BY dt_update DESC 
+            LIMIT 1""";
 
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(queryFindLatestFile)) {
             if (resultSet.next()) {
-                return resultSet.getString("filename");
+                String filename = resultSet.getString("filename");
+                // Cập nhật đường dẫn file với ổ D, sử dụng dấu '/' thay vì '\'
+                return "D:/warehouse/data/" + filename; // Sử dụng dấu '/' thay vì '\'
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -112,21 +114,38 @@ public class DataProcessing {
 
     // 3.3. Kiểm tra procedure và gọi procedure load dữ liệu vào laptop_data_temp
     private static void loadDataProcedure(Connection connection, String latestFile) {
-        String procedureLoadData = getProcedureName(connection, "load_data");
-        if (procedureLoadData != null) {
-            // 3.3.1. Kiểm tra procedure và thực hiện load dữ liệu từ file csv vào laptop_data_temp
-            System.out.println("Thực hiện procedure load dữ liệu: " + procedureLoadData);
-            try (CallableStatement callableStatement = connection.prepareCall("{CALL " + procedureLoadData + "}")) {
-                callableStatement.execute();
+        if (latestFile != null && !latestFile.isEmpty()) {
+            // 3.3.1. Kiểm tra nếu latestFile không phải null và không rỗng
+            System.out.println("Đang load dữ liệu từ file: " + latestFile);
+
+            // Câu lệnh SQL để tải dữ liệu từ file CSV vào bảng laptop_data_temp
+            String sql = "LOAD DATA INFILE '" + latestFile + "' INTO TABLE staging_laptop_data " +
+                    "FIELDS TERMINATED BY ',' " +      // Cách phân tách các trường dữ liệu
+                    "ENCLOSED BY '\"' " +              // Ký tự bao quanh các trường dữ liệu
+                    "LINES TERMINATED BY '\\n' " +     // Cách phân tách các dòng dữ liệu
+                    "IGNORE 1 ROWS " +                 // Bỏ qua dòng đầu tiên (tiêu đề)
+                    "(name, price, trademark, type, status, cpu, ram, hard_drive, " +
+                    "screen, graphics_card, operating_system, warranty, import_date, expiration_date);";
+
+            try (Statement statement = connection.createStatement()) {
+                // Thực thi câu lệnh SQL
+                statement.execute(sql);
+                System.out.println("Dữ liệu đã được load thành công từ file: " + latestFile);
             } catch (SQLException e) {
+                // 3.3.4. Ghi log khi có lỗi trong quá trình thực thi câu lệnh SQL
+                logError(connection, latestFile, "Lỗi khi thực thi câu lệnh LOAD DATA INFILE: " + e.getMessage());
+                // 3.3.5. Gửi email khi có lỗi
+                sendEmail("Lỗi trong quá trình load dữ liệu", "Có lỗi trong khi tải dữ liệu từ file: " + latestFile + ".\n" + e.getMessage());
                 e.printStackTrace();
             }
         } else {
-            // 3.3.1.1. Ghi log khi không tìm thấy procedure load dữ liệu
-            logError(connection, latestFile, "Không tìm thấy procedure load dữ liệu");
-            sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy procedure load dữ liệu.");
+            // 3.3.1.1. Ghi log và gửi email khi không tìm thấy đường dẫn file hợp lệ
+            System.out.println("Đường dẫn file không hợp lệ: " + latestFile);
+            logError(connection, latestFile, "Đường dẫn file không hợp lệ.");
+            sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy đường dẫn file hợp lệ: " + latestFile);
         }
     }
+
 
     // 3.4. Gọi procedure lọc sản phẩm từ bảng laptop_data_temp
     private static void filterProductProcedure(Connection connection, String latestFile) {
@@ -293,8 +312,34 @@ public class DataProcessing {
     }
 
     private static boolean isDataEmpty(Connection connection) {
-        // Kiểm tra xem có dòng nào có dữ liệu null không
-        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data WHERE column_name IS NULL";
+        // Lấy danh sách các cột trong bảng staging_laptop_data
+        String getColumnsQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'staging_laptop_data'";
+
+        // Chuỗi chứa các điều kiện để kiểm tra null cho tất cả các cột
+        StringBuilder columnChecks = new StringBuilder();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(getColumnsQuery)) {
+
+            while (rs.next()) {
+                String columnName = rs.getString("COLUMN_NAME");
+                if (columnChecks.length() > 0) {
+                    columnChecks.append(" OR ");
+                }
+                columnChecks.append(columnName).append(" IS NULL");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false; // Trong trường hợp có lỗi, giả sử không có dữ liệu rỗng
+        }
+
+        // Kiểm tra nếu không có cột nào, tức là bảng trống hoặc không có cột
+        if (columnChecks.length() == 0) {
+            return false;
+        }
+
+        // Truy vấn kiểm tra dữ liệu null
+        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data WHERE " + columnChecks.toString();
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
             if (resultSet.next()) {
@@ -305,6 +350,7 @@ public class DataProcessing {
         }
         return false;
     }
+
 
     private static boolean isNullHandlingSuccessful(Connection connection) {
         // Kiểm tra lại xem sau xử lý có còn null không
