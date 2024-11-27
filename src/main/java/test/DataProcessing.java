@@ -102,7 +102,7 @@ public class DataProcessing {
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(queryFindLatestFile)) {
             if (resultSet.next()) {
-                return resultSet.getString("file_name");
+                return resultSet.getString("filename");
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -218,15 +218,16 @@ public class DataProcessing {
     // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
     private static void logSuccess(Connection connection, String message) {
         String logInsertQuery = """
-                INSERT INTO log(filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, 'process', 'SU', ?, ?, ?)""" ;
+                INSERT INTO log(id_config, filename, date, event, status, file_size, dt_update, error_message)
+                VALUES (?, ?, ?, 'process', 'SU', ?, ?, ?)""" ;
 
         try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setString(1, "data.csv");
-            preparedStatement.setDate(2, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(3, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(5, message);
+            preparedStatement.setInt(1, 19);
+            preparedStatement.setString(2, "data.csv");
+            preparedStatement.setDate(3, new java.sql.Date(System.currentTimeMillis()));
+            preparedStatement.setLong(4, 0); // Kích thước file giả định
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
+            preparedStatement.setString(6, message);
             preparedStatement.executeUpdate();
             System.out.println("Log thành công: " + message);
         } catch (SQLException e) {
@@ -236,15 +237,16 @@ public class DataProcessing {
 
     private static void logError(Connection connection, String fileName, String errorMessage) {
         String logInsertQuery = """
-                INSERT INTO log(filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, 'load to staging', 'EF', ?, ?, ?)""" ;
+                INSERT INTO log(id_config, filename, date, event, status, file_size, dt_update, error_message)
+                VALUES (?, ?, ?, 'load to staging', 'EF', ?, ?, ?)""" ;
 
         try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setString(1, fileName);
-            preparedStatement.setDate(2, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(3, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(5, errorMessage);
+            preparedStatement.setInt(1, 19); // ID_config giả định là 1
+            preparedStatement.setString(2, fileName);
+            preparedStatement.setDate(3, new java.sql.Date(System.currentTimeMillis()));
+            preparedStatement.setLong(4, 0); // Kích thước file giả định
+            preparedStatement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
+            preparedStatement.setString(6, errorMessage);
             preparedStatement.executeUpdate();
             System.out.println("Log lỗi đã được ghi: " + errorMessage);
         } catch (SQLException e) {
@@ -278,7 +280,7 @@ public class DataProcessing {
 
     private static boolean checkDataLoaded(Connection connection) {
         // Giả sử ta kiểm tra số lượng dòng trong `laptop_data_temp` lớn hơn 0
-        String query = "SELECT COUNT(*) AS total FROM laptop_data_temp";
+        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data";
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
             if (resultSet.next()) {
@@ -292,7 +294,7 @@ public class DataProcessing {
 
     private static boolean isDataEmpty(Connection connection) {
         // Kiểm tra xem có dòng nào có dữ liệu null không
-        String query = "SELECT COUNT(*) AS total FROM laptop_data_temp WHERE column_name IS NULL";
+        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data WHERE column_name IS NULL";
         try (Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(query)) {
             if (resultSet.next()) {
