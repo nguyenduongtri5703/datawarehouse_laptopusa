@@ -33,15 +33,15 @@ public class CrawlProduct {
     private static String fileName;
     private static String fileName_2;
     // Đếm số dòng của file
-    private static int count ;
+    private static int count;
     // Kích thước file
     private static double fileSizeKB;
     // Khởi tạo EmailService
     private static final IJavaMail emailService = new EmailService();
 
-        public static void runCrawl() {
+    public static void runCrawl() {
 
-            System.out.println("Loading configuration from database...");
+        System.out.println("Loading configuration from database...");
 
         // 2. Tải/lấy cấu hình từ config trong database
         if (!loadConfigFromDatabase()) {
@@ -75,7 +75,8 @@ public class CrawlProduct {
                     allProducts.add(productDetails);
                 }
             }
-            // Nếu không có dữ liệu sản phẩm thì (6) gửi thông báo lỗi qua email, ghi log error và break
+            // Nếu không có dữ liệu sản phẩm thì (6) gửi thông báo lỗi qua email, ghi log
+            // error và break
             // Nếu có dữ liệu sản phẩm thì tiếp tục
             if (allProducts.isEmpty()) {
                 System.out.println("No product data found from the links. Sending error email...");
@@ -131,15 +132,11 @@ public class CrawlProduct {
         return false;
     }
 
-
     // (4) Phương thức lấy ra danh sách liên kết của các sản phẩm
     private static List<String> getProductLinks(String url) {
         List<String> productLinks = new ArrayList<>();
         try {
-            Document doc = Jsoup.connect(url)
-                    .userAgent("Mozilla/5.0")
-                    .timeout(10000)
-                    .get();
+            Document doc = Jsoup.connect(url).userAgent("Mozilla/5.0").timeout(10000).get();
             System.out.println("Successfully fetched the product list from " + url + ".");
             Elements productDivs = doc.select("div.product-img");
 
@@ -157,16 +154,13 @@ public class CrawlProduct {
         return productLinks;
     }
 
-    // (5)  Phương thức Lấy dữ liệu chi tiết của sản phẩm
+    // (5) Phương thức Lấy dữ liệu chi tiết của sản phẩm
     private static Map<String, String> scrapeProductDetails(String url) {
         // Tạo một map để lưu trữ chi tiết sản phẩm với thứ tự bảo toàn
         Map<String, String> productDetails = new LinkedHashMap<>();
         try {
             // Kết nối tới URL sản phẩm, cài đặt user agent và thời gian chờ
-            Document doc = Jsoup.connect(url)
-                    .userAgent("Mozilla/5.0")
-                    .timeout(10000)
-                    .get();
+            Document doc = Jsoup.connect(url).userAgent("Mozilla/5.0").timeout(10000).get();
             System.out.println("Successfully fetched the product details from " + url + ".");
 
             // Lấy tên sản phẩm
@@ -181,7 +175,8 @@ public class CrawlProduct {
 
             // Lấy thương hiệu sản phẩm
             Element brandTag = doc.selectFirst("div.pro-brand");
-            String brand = brandTag != null ? brandTag.text().replaceFirst("(?i)Thương hiệu\\s*:", "").trim() : "Not Found";
+            String brand = brandTag != null ? brandTag.text().replaceFirst("(?i)Thương hiệu\\s*:", "").trim()
+                    : "Not Found";
             productDetails.put("Thương hiệu", brand);
 
             // Lấy loại sản phẩm
@@ -191,7 +186,8 @@ public class CrawlProduct {
 
             // Lấy tình trạng sản phẩm
             Element stockTag = doc.selectFirst("div.pro-stock");
-            String stock = stockTag != null ? stockTag.text().replaceFirst("(?i)Tình trạng\\s*:", "").trim() : "Not Found";
+            String stock = stockTag != null ? stockTag.text().replaceFirst("(?i)Tình trạng\\s*:", "").trim()
+                    : "Not Found";
             productDetails.put("Tình trạng", stock);
 
             // Lấy các mô tả sản phẩm, bỏ qua thông tin "Màu sắc"
@@ -209,12 +205,12 @@ public class CrawlProduct {
             }
 
             // Ánh xạ các mô tả với các trường cụ thể như CPU, RAM, v.v.
-            String[] headers = {"CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành"};
+            String[] headers = { "CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành" };
             for (int i = 0; i < headers.length; i++) {
                 if (i < descriptions.size()) {
-                    // Loại bỏ tiền tố (như "CPU:", "RAM:") và dấu hai chấm, không phân biệt chữ hoa/thường
-                    String description = descriptions.get(i)
-                            .replaceFirst("(?i)^" + headers[i] + "\\s*:\\s*", "")
+                    // Loại bỏ tiền tố (như "CPU:", "RAM:") và dấu hai chấm, không phân biệt chữ
+                    // hoa/thường
+                    String description = descriptions.get(i).replaceFirst("(?i)^" + headers[i] + "\\s*:\\s*", "")
                             .trim();
                     productDetails.put(headers[i], description);
                 } else {
@@ -247,17 +243,14 @@ public class CrawlProduct {
         // Đặt tên file theo đinh dạng data_time_.csv
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
         String timestamp = LocalDateTime.now().format(formatter);
-        fileName = exportLocation + "\\"+"data_" + timestamp + ".csv";
+        fileName = exportLocation + "\\" + "data_" + timestamp + ".csv";
         fileName_2 = "data_" + timestamp + ".csv";
-        List<String> headersList = Arrays.asList(
-                "Tên sản phẩm", "Giá", "Thương hiệu", "Loại", "Tình trạng",
-                "CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa",
-                "Hệ điều hành", "Bảo hành", "Ngày nhập", "Ngày hết hạn"
-        );
+        List<String> headersList = Arrays.asList("Tên sản phẩm", "Giá", "Thương hiệu", "Loại", "Tình trạng", "CPU",
+                "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành", "Ngày nhập", "Ngày hết hạn");
 
         count = 0; // Đếm số dòng đã ghi
-        //  (7) Thêm dữ liệu vào File
-        //  (8) Xuất dữ liệu ra file csv tới địa chỉ trong config
+        // (7) Thêm dữ liệu vào File
+        // (8) Xuất dữ liệu ra file csv tới địa chỉ trong config
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Ghi tiêu đề vào file CSV
             fileWriter.write(String.join(",", headersList) + "\n");
@@ -279,7 +272,7 @@ public class CrawlProduct {
                                 double decimalPrice = Double.parseDouble(cleanedPrice);
                                 value = String.format("%.2f", decimalPrice);
                             } catch (NumberFormatException e) {
-                                System.err.println("Lỗi khi chuyển đổi giá: " + value);
+                                System.err.println("Fail to format price " + value);
                                 value = "0.00"; // Giá trị mặc định nếu chuyển đổi thất bại
                             }
                         }
@@ -300,8 +293,6 @@ public class CrawlProduct {
             File csvFile = new File(fileName);
             fileSizeKB = csvFile.length() / 1024.0;
 
-
-
         } catch (IOException e) {
             System.err.println("Error writing to CSV file: " + e.getMessage());
 //            sendErrorEmail("Error writing to CSV file: " + e.getMessage());
@@ -314,7 +305,7 @@ public class CrawlProduct {
         Connection conn = null;
         PreparedStatement pstmt = null;
         ResultSet rs = null;
-         email = null;
+        email = null;
         try {
             conn = JDBCUtil.getConnection();
 
@@ -346,10 +337,9 @@ public class CrawlProduct {
 
         String subject = "Success Notification: Crawl data "; // Tiêu đề
         String message = "Scraping completed successfully!\n\n" + // Nội dung
-                "Total products scraped: " + count + "\n" +
-                "Export file location: " + fileName + "\n" +
-                "File name: " + fileName_2 + "\n" +
-                "Completion time: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                "Total products scraped: " + count + "\n" + "Export file location: " + fileName + "\n" + "File name: "
+                + fileName_2 + "\n" + "Completion time: "
+                + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         boolean sent = emailService.send(email, subject, message);
         if (!sent) {
             System.err.println("Failed to send success notification email");
@@ -373,8 +363,6 @@ public class CrawlProduct {
         }
     }
 
-
-
     // (10) Ghi log nếu thành công export ra file csv
     private static void logSuccessToDatabase(String fileName, int count, double fileSizeKB) {
         Connection conn = null;
@@ -383,8 +371,8 @@ public class CrawlProduct {
             conn = JDBCUtil.getConnection();
 
             // Chuẩn bị câu lệnh SQL cho việc chèn bản ghi thành công vào bảng log
-            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             pstmt = conn.prepareStatement(sql);
 
             pstmt.setInt(1, 19);
@@ -413,8 +401,8 @@ public class CrawlProduct {
             conn = JDBCUtil.getConnection();
 
             // Insert ghi lỗi vào bảng log
-            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             pstmt = conn.prepareStatement(sql);
 
             pstmt.setInt(1, 19); // ID_config giả định là 1
@@ -436,4 +424,3 @@ public class CrawlProduct {
         }
     }
 }
-
