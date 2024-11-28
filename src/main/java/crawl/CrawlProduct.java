@@ -39,8 +39,6 @@ public class CrawlProduct {
     // Khởi tạo EmailService
     private static final IJavaMail emailService = new EmailService();
 
-    public static void main(String[] args) {
-    }
         public static void runCrawl() {
 
             System.out.println("Loading configuration from database...");
@@ -269,6 +267,24 @@ public class CrawlProduct {
                 List<String> row = new ArrayList<>();
                 for (String header : headersList) {
                     String value = product.getOrDefault(header, "").replace("\"", "\"\"");
+                    // Xử lý giá trị nếu là cột "Giá", đổi thành định dạng decimal
+                    if ("Giá".equals(header)) {
+                        if (value == null || value.isEmpty() || "Not Found".equals(value)) {
+                            value = "0.00"; // Gán giá trị mặc định nếu không hợp lệ
+                        } else {
+                            try {
+                                // Loại bỏ ký tự tiền tệ, dấu phẩy, khoảng trắng
+                                String cleanedPrice = value.replaceAll("[^\\d.]", "").replace(",", "");
+                                // Chuyển thành số thập phân và định dạng
+                                double decimalPrice = Double.parseDouble(cleanedPrice);
+                                value = String.format("%.2f", decimalPrice);
+                            } catch (NumberFormatException e) {
+                                System.err.println("Lỗi khi chuyển đổi giá: " + value);
+                                value = "0.00"; // Giá trị mặc định nếu chuyển đổi thất bại
+                            }
+                        }
+                    }
+
                     if (value.contains(",") || value.contains("\"")) {
                         value = "\"" + value + "\"";
                     }
@@ -290,6 +306,7 @@ public class CrawlProduct {
             System.err.println("Error writing to CSV file: " + e.getMessage());
 //            sendErrorEmail("Error writing to CSV file: " + e.getMessage());
         }
+
     }
 
     // Lấy địa chỉ email từ config
