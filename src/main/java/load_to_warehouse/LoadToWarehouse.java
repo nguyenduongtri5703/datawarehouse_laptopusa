@@ -72,6 +72,16 @@ public class LoadToWarehouse {
                 return;
             }
 
+            // Xóa tất cả dữ liệu trong bảng staging_laptop_data
+            String deleteStagingData = "DELETE FROM staging_laptop_data";
+            try (PreparedStatement deleteStmt = connection.prepareStatement(deleteStagingData)) {
+                int rowsDeleted = deleteStmt.executeUpdate();
+                System.out.println("Xóa " + rowsDeleted + " dòng trong bảng staging_laptop_data.");
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi xóa dữ liệu trong staging_laptop_data: " + e.getMessage());
+                sendEmail("Lỗi xóa dữ liệu", "Không thể xóa dữ liệu trong staging_laptop_data: " + e.getMessage());
+            }
+
             // 4.9 Đóng kết nối
             JDBCUtil.closeConnection(connection);
         } catch (SQLException e) {
