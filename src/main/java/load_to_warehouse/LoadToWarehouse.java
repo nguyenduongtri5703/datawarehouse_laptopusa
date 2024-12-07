@@ -9,98 +9,38 @@ import java.time.LocalDateTime;
 public class LoadToWarehouse {
 
     public static void loadToWareHouse() {
-        try {
-            // 4.1 kết nối db
-            Connection connection = JDBCUtil.getConnection();
+        try (Connection connection = JDBCUtil.getConnection()) {  // Sử dụng try-with-resources để tự động đóng kết nối
             if (connection == null) {
                 System.out.println("Không thể kết nối tới cơ sở dữ liệu.");
                 return;
             }
 
-            // 4.2 Kiểm tra trạng thái "Transform field"
-            String transformCheckQuery = "SELECT * FROM log WHERE event = 'transform field' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
-            try (PreparedStatement transformCheckStmt = connection.prepareStatement(transformCheckQuery);
-                 ResultSet transformCheckResult = transformCheckStmt.executeQuery()) {
-
-                if (!transformCheckResult.next()) {
-                    System.out.println("Chưa thực hiện transform field. Dừng quá trình.");
-                    return;
-                }
-            }
-
-            // 4.3 Kiểm tra trạng thái "Load to Data Warehouse"
-            String loadCheckQuery = "SELECT * FROM log WHERE event = 'load to data warehouse' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
-            try (PreparedStatement loadCheckStmt = connection.prepareStatement(loadCheckQuery);
-                 ResultSet loadCheckResult = loadCheckStmt.executeQuery()) {
-
-                if (loadCheckResult.next()) {
-                    System.out.println("Đã thực hiện load to warehouse.");
-                    return;
-                }
-            }
-
-            // 4.4 Ghi log "bắt đầu thực hiện load to warehouse"
-            String startLogQuery = "INSERT INTO log(event, status, dt_update) VALUES ('load to data warehouse', 'IP', ?)";
-            try (PreparedStatement startLogStmt = connection.prepareStatement(startLogQuery)) {
-                startLogStmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
-                startLogStmt.executeUpdate();
-                System.out.println("Bắt đầu thực hiện load to warehouse.");
-            }
-
-            // 4.5
-
-            // 4.6
-
-            // 4.7 Thực thi procedure "load_to_warehouse"
-            String procedureName = getProcedureName(connection, "load_to_warehouse");
-            if (procedureName != null) {
-                System.out.println("Thực hiện procedure: " + procedureName);
-                try (CallableStatement callableStatement = connection.prepareCall("{CALL " + procedureName + "}")) {
-                    callableStatement.execute();
-                }
-
-                // 4.8 Ghi log "load to data warehouse thành công"
-                String successLogQuery = "INSERT INTO log(event, status, dt_update) VALUES ('load to data warehouse', 'SU', ?)";
-                try (PreparedStatement successLogStmt = connection.prepareStatement(successLogQuery)) {
-                    successLogStmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
-                    successLogStmt.executeUpdate();
-                }
-                System.out.println("Load to warehouse thành công.");
-            } else {
-                System.err.println("Không tìm thấy procedure load_to_warehouse.");
-                sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy procedure load dữ liệu.");
+            // 4.7 Thực thi stored procedure "load_to_warehouse_proc"(Trong procedure có sẵn các bước từ 4.1 đến 4.6)
+            try (CallableStatement callableStatement = connection.prepareCall("{CALL load_to_warehouse_proc()}")) {
+                callableStatement.execute();
+                System.out.println("Quá trình load to warehouse đã hoàn thành.");
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi gọi stored procedure: " + e.getMessage());
+                sendEmail("Lỗi trong quá trình load dữ liệu", e.getMessage());
                 return;
             }
 
-            // Xóa tất cả dữ liệu trong bảng staging_laptop_data
-            String deleteStagingData = "DELETE FROM staging_laptop_data";
-            try (PreparedStatement deleteStmt = connection.prepareStatement(deleteStagingData)) {
-                int rowsDeleted = deleteStmt.executeUpdate();
-                System.out.println("Xóa " + rowsDeleted + " dòng trong bảng staging_laptop_data.");
-            } catch (SQLException e) {
-                System.err.println("Lỗi khi xóa dữ liệu trong staging_laptop_data: " + e.getMessage());
-                sendEmail("Lỗi xóa dữ liệu", "Không thể xóa dữ liệu trong staging_laptop_data: " + e.getMessage());
-            }
-
-            // 4.9 Đóng kết nối
-            JDBCUtil.closeConnection(connection);
+            // 4.9 Đóng kết nối đã được xử lý tự động bởi try-with-resources
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
     private static void logError(Connection connection, String fileName, String errorMessage) {
-        String logInsertQuery = """
-                INSERT INTO log(filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, 'load to staging', 'EF', ?, ?, ?)""";
+        String procedureCall = "{CALL log_error_proc(?, ?)}"; // Gọi procedure log_error_proc
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setString(1, fileName);
-            preparedStatement.setDate(2, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(3, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(5, errorMessage);
-            preparedStatement.executeUpdate();
+        try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+            // Set các tham số cho procedure
+            callableStatement.setString(1, fileName);
+            callableStatement.setString(2, errorMessage);
+
+            // Thực thi stored procedure
+            callableStatement.execute();
             System.out.println("Log lỗi đã được ghi: " + errorMessage);
         } catch (SQLException e) {
             e.printStackTrace();
@@ -108,22 +48,21 @@ public class LoadToWarehouse {
     }
 
     private static void logSuccess(Connection connection, String message) {
-        String logInsertQuery = """
-                INSERT INTO log(filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, 'process', 'SU', ?, ?, ?)""";
+        String procedureCall = "{CALL log_success_proc(?, ?)}"; // Gọi procedure log_success_proc
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setString(1, "data.csv");
-            preparedStatement.setDate(2, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(3, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(4, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(5, message);
-            preparedStatement.executeUpdate();
+        try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+            // Set các tham số cho procedure
+            callableStatement.setString(1, "data.csv"); // Tên tệp
+            callableStatement.setString(2, message); // Thông báo log
+
+            // Thực thi stored procedure
+            callableStatement.execute();
             System.out.println("Log thành công: " + message);
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
+
 
     private static void sendEmail(String subject, String messageContent) {
         EmailService emailService = new EmailService();
