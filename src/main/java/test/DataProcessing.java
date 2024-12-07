@@ -43,7 +43,7 @@ public class DataProcessing {
             updateStagingLaptopData(connection, latestFile);
 
             // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
-            logSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
+            logProcessSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
 
         } catch (SQLException e) {
             e.printStackTrace();
@@ -83,7 +83,7 @@ public class DataProcessing {
             updateStagingLaptopData(connection, latestFile);
 
             // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
-            logSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
+            logProcessSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -118,22 +118,19 @@ public class DataProcessing {
             // 3.3.1. Kiểm tra nếu latestFile không phải null và không rỗng
             System.out.println("Đang load dữ liệu từ file: " + latestFile);
 
-            // Câu lệnh SQL để tải dữ liệu từ file CSV vào bảng laptop_data_temp
-            String sql = "LOAD DATA INFILE '" + latestFile + "' INTO TABLE staging_laptop_data " +
-                    "FIELDS TERMINATED BY ',' " +      // Cách phân tách các trường dữ liệu
-                    "ENCLOSED BY '\"' " +              // Ký tự bao quanh các trường dữ liệu
-                    "LINES TERMINATED BY '\\n' " +     // Cách phân tách các dòng dữ liệu
-                    "IGNORE 1 ROWS " +                 // Bỏ qua dòng đầu tiên (tiêu đề)
-                    "(name, price, trademark, type, status, cpu, ram, hard_drive, " +
-                    "screen, graphics_card, operating_system, warranty, import_date, expiration_date);";
+            // Gọi stored procedure để load dữ liệu từ file vào bảng staging_laptop_data
+            String procedureCall = "{CALL load_data_from_file(?)}";
 
-            try (Statement statement = connection.createStatement()) {
-                // Thực thi câu lệnh SQL
-                statement.execute(sql);
+            try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+                // Set tham số cho stored procedure
+                callableStatement.setString(1, latestFile);
+
+                // Thực thi stored procedure
+                callableStatement.execute();
                 System.out.println("Dữ liệu đã được load thành công từ file: " + latestFile);
             } catch (SQLException e) {
                 // 3.3.4. Ghi log khi có lỗi trong quá trình thực thi câu lệnh SQL
-                logError(connection, latestFile, "Lỗi khi thực thi câu lệnh LOAD DATA INFILE: " + e.getMessage());
+                logError(connection, latestFile, "Lỗi khi gọi procedure load_data_from_file: " + e.getMessage());
                 // 3.3.5. Gửi email khi có lỗi
                 sendEmail("Lỗi trong quá trình load dữ liệu", "Có lỗi trong khi tải dữ liệu từ file: " + latestFile + ".\n" + e.getMessage());
                 e.printStackTrace();
@@ -145,6 +142,7 @@ public class DataProcessing {
             sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy đường dẫn file hợp lệ: " + latestFile);
         }
     }
+
 
 
     // 3.4. Gọi procedure lọc sản phẩm từ bảng laptop_data_temp
@@ -235,38 +233,35 @@ public class DataProcessing {
     }
 
     // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
-    private static void logSuccess(Connection connection, String message) {
-        String logInsertQuery = """
-                INSERT INTO log(id_config, filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, ?, 'process', 'SU', ?, ?, ?)""" ;
+    // Gọi stored procedure log_process_success
+    public static void logProcessSuccess(Connection connection, String message) {
+        String storedProc = "{CALL log_process_success(?, ?, ?)}"; // Gọi stored procedure
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setInt(1, 19);
-            preparedStatement.setString(2, "data.csv");
-            preparedStatement.setDate(3, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(4, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(6, message);
-            preparedStatement.executeUpdate();
+        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
+            callableStatement.setInt(1, 19); // Tham số id_config
+            callableStatement.setString(2, "data.csv"); // Tham số filename
+            callableStatement.setString(3, message); // Tham số message
+
+            // Thực thi stored procedure
+            callableStatement.execute();
             System.out.println("Log thành công: " + message);
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    private static void logError(Connection connection, String fileName, String errorMessage) {
-        String logInsertQuery = """
-                INSERT INTO log(id_config, filename, date, event, status, file_size, dt_update, error_message)
-                VALUES (?, ?, ?, 'load to staging', 'EF', ?, ?, ?)""" ;
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement(logInsertQuery)) {
-            preparedStatement.setInt(1, 19); // ID_config giả định là 1
-            preparedStatement.setString(2, fileName);
-            preparedStatement.setDate(3, new java.sql.Date(System.currentTimeMillis()));
-            preparedStatement.setLong(4, 0); // Kích thước file giả định
-            preparedStatement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
-            preparedStatement.setString(6, errorMessage);
-            preparedStatement.executeUpdate();
+    // Gọi stored procedure log_error
+    public static void logError(Connection connection, String fileName, String errorMessage) {
+        String storedProc = "{CALL log_error(?, ?, ?)}"; // Gọi stored procedure
+
+        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
+            callableStatement.setInt(1, 19); // Tham số id_config
+            callableStatement.setString(2, fileName); // Tham số filename
+            callableStatement.setString(3, errorMessage); // Tham số error_message
+
+            // Thực thi stored procedure
+            callableStatement.execute();
             System.out.println("Log lỗi đã được ghi: " + errorMessage);
         } catch (SQLException e) {
             e.printStackTrace();
@@ -297,14 +292,18 @@ public class DataProcessing {
         return null;
     }
 
-    private static boolean checkDataLoaded(Connection connection) {
-        // Giả sử ta kiểm tra số lượng dòng trong `laptop_data_temp` lớn hơn 0
-        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data";
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(query)) {
-            if (resultSet.next()) {
-                return resultSet.getInt("total") > 0;
-            }
+    // Gọi stored procedure check_data_loaded
+    public static boolean checkDataLoaded(Connection connection) {
+        String storedProc = "{CALL check_data_loaded(?)}"; // Gọi stored procedure
+
+        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
+            callableStatement.registerOutParameter(1, Types.BOOLEAN); // Đăng ký tham số OUT
+
+            // Thực thi stored procedure
+            callableStatement.execute();
+
+            // Lấy giá trị tham số OUT
+            return callableStatement.getBoolean(1);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -312,38 +311,15 @@ public class DataProcessing {
     }
 
     private static boolean isDataEmpty(Connection connection) {
-        // Lấy danh sách các cột trong bảng staging_laptop_data
-        String getColumnsQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'staging_laptop_data'";
+        // Gọi Stored Procedure trong MySQL
+        String procedureCall = "{CALL check_if_data_empty()}";
 
-        // Chuỗi chứa các điều kiện để kiểm tra null cho tất cả các cột
-        StringBuilder columnChecks = new StringBuilder();
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(getColumnsQuery)) {
+        try (CallableStatement stmt = connection.prepareCall(procedureCall);
+             ResultSet rs = stmt.executeQuery()) {
 
-            while (rs.next()) {
-                String columnName = rs.getString("COLUMN_NAME");
-                if (columnChecks.length() > 0) {
-                    columnChecks.append(" OR ");
-                }
-                columnChecks.append(columnName).append(" IS NULL");
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false; // Trong trường hợp có lỗi, giả sử không có dữ liệu rỗng
-        }
-
-        // Kiểm tra nếu không có cột nào, tức là bảng trống hoặc không có cột
-        if (columnChecks.length() == 0) {
-            return false;
-        }
-
-        // Truy vấn kiểm tra dữ liệu null
-        String query = "SELECT COUNT(*) AS total FROM staging_laptop_data WHERE " + columnChecks.toString();
-        try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(query)) {
-            if (resultSet.next()) {
-                return resultSet.getInt("total") > 0;
+            if (rs.next()) {
+                int total = rs.getInt("total");
+                return total > 0;
             }
         } catch (SQLException e) {
             e.printStackTrace();

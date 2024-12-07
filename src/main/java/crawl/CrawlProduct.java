@@ -11,16 +11,11 @@ import org.jsoup.select.Elements;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.File;
+import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 
 public class CrawlProduct {
 
@@ -366,26 +361,28 @@ public class CrawlProduct {
     // (10) Ghi log nếu thành công export ra file csv
     private static void logSuccessToDatabase(String fileName, int count, double fileSizeKB) {
         Connection conn = null;
-        PreparedStatement pstmt = null;
+        CallableStatement cstmt = null;
         try {
             conn = JDBCUtil.getConnection();
 
-            // Chuẩn bị câu lệnh SQL cho việc chèn bản ghi thành công vào bảng log
-            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            pstmt = conn.prepareStatement(sql);
+            // Gọi stored procedure LogSuccessToDatabase
+            String sql = "{CALL LogSuccessToDatabase(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            cstmt = conn.prepareCall(sql);
 
-            pstmt.setInt(1, 19);
-            pstmt.setString(2, fileName);
-            pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
-            pstmt.setString(4, "crawler data");
-            pstmt.setString(5, "SU");
-            pstmt.setInt(6, count);
-            pstmt.setDouble(7, fileSizeKB);
-            pstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
-            pstmt.setString(9, "");
-            pstmt.executeUpdate();
-            System.out.println("Logged success to database successfully.");
+            // Gán giá trị cho các tham số
+            cstmt.setInt(1, 19); // ID_config giả định là 19
+            cstmt.setString(2, fileName); // Tên file
+            cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // Ngày hiện tại
+            cstmt.setString(4, "crawler data"); // Event
+            cstmt.setString(5, "SU"); // Status (Success)
+            cstmt.setInt(6, count); // Số lượng
+            cstmt.setDouble(7, fileSizeKB); // Kích thước file
+            cstmt.setTimestamp(8, Timestamp.valueOf(LocalDateTime.now())); // Thời gian hiện tại
+            cstmt.setString(9, ""); // Không có lỗi (Error message rỗng)
+
+            // Thực thi stored procedure
+            cstmt.execute();
+            System.out.println("Logged success to database successfully using stored procedure.");
         } catch (SQLException e) {
             System.err.println("Error logging to database: " + e.getMessage());
         } finally {
@@ -394,33 +391,32 @@ public class CrawlProduct {
     }
 
     // (10) Ghi log nếu có lỗi
-    private static void logErrorToDatabase(String errorMessage) {
-        Connection conn = null;
-        PreparedStatement pstmt = null;
-        try {
-            conn = JDBCUtil.getConnection();
+        private static void logErrorToDatabase(String errorMessage) {
+            Connection conn = null;
+            CallableStatement cstmt = null;
+            try {
+                conn = JDBCUtil.getConnection();
 
-            // Insert ghi lỗi vào bảng log
-            String sql = "INSERT INTO log (id_config, filename, date, event, status, count, file_size, dt_update, error_message) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            pstmt = conn.prepareStatement(sql);
+                // Gọi stored procedure LogErrorToDatabase
+                String sql = "{CALL LogErrorToDatabase(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+                cstmt = conn.prepareCall(sql);
 
-            pstmt.setInt(1, 19); // ID_config giả định là 1
-            pstmt.setString(2, "");
-            pstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now()));
-            pstmt.setString(4, "crawler data");
-            pstmt.setString(5, "ER");
-            pstmt.setNull(6, count);
-            pstmt.setNull(7, (int) fileSizeKB);
-            pstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
-            pstmt.setString(9, errorMessage);
+                cstmt.setInt(1, 19); // ID_config giả định là 19
+                cstmt.setString(2, ""); // Filename để trống
+                cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // Ngày hiện tại
+                cstmt.setString(4, "crawler data"); // Event
+                cstmt.setString(5, "ER"); // Status
+                cstmt.setNull(6, Types.INTEGER); // Count null
+                cstmt.setNull(7, Types.INTEGER); // File size null
+                cstmt.setTimestamp(8, Timestamp.valueOf(LocalDateTime.now())); // Timestamp hiện tại
+                cstmt.setString(9, errorMessage); // Error message
 
-            pstmt.executeUpdate();
-            System.out.println("Logged error to database successfully.");
-        } catch (SQLException e) {
-            System.err.println("Error logging to database: " + e.getMessage());
-        } finally {
-            JDBCUtil.closeConnection(conn); // Đóng kết nối
+                cstmt.execute();
+                System.out.println("Logged error to database successfully using stored procedure.");
+            } catch (SQLException e) {
+                System.err.println("Error logging to database: " + e.getMessage());
+            } finally {
+                JDBCUtil.closeConnection(conn); // Đóng kết nối
+            }
         }
-    }
 }
