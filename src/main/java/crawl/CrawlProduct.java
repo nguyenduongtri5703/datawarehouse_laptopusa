@@ -91,40 +91,56 @@ public class CrawlProduct {
 
     }
 
-    // Tải cấu hình từ file config
+    // (2) Tải cấu hình từ file config
     // Lấy địa chỉ lưu file trong config và gán cho exportLocation
     private static boolean loadConfigFromDatabase() {
         Connection conn = null;
+        CallableStatement cstmt = null;
 
         try {
             conn = JDBCUtil.getConnection();
-            Statement stmt = conn.createStatement();
 
-            // Thực thi câu truy vấn để lấy dữ liệu cấu hình ( từ id 19 )
-            ResultSet rs = stmt.executeQuery("SELECT source, source_location FROM control WHERE id = '19'");
+            // Gọi stored procedure
+            String storedProc = "{CALL load_config_data(?, ?, ?, ?)}";
+            cstmt = conn.prepareCall(storedProc);
 
-            if (rs.next()) {
-                // Gán các giá trị từ kết quả truy vấn
-                // Đường dẫn source
-                sourceUrl = rs.getString("source");
-                // Địa chỉ lưu file csv
-                exportLocation = rs.getString("source_location");
+            // Thiết lập tham số đầu vào
+            cstmt.setInt(1, 19); // ID của cấu hình cần lấy
 
-                // Tạo thư mục xuất nếu nó chưa tồn tại
+
+            cstmt.registerOutParameter(2, java.sql.Types.VARCHAR); // source
+            cstmt.registerOutParameter(3, java.sql.Types.VARCHAR); // source_location
+            cstmt.registerOutParameter(4, java.sql.Types.VARCHAR); // email
+
+            // Thực thi stored procedure
+            cstmt.execute();
+
+            // Lấy kết quả từ các tham số đầu ra
+            String source = cstmt.getString(2);
+            String sourceLocation = cstmt.getString(3);
+            String emailConfig = cstmt.getString(4);
+
+            if (source != null && sourceLocation != null && emailConfig != null) {
+                // Gán giá trị cho các biến global
+                sourceUrl = source;
+                exportLocation = sourceLocation;
+                email = emailConfig; // email
+
+                // Tạo thư mục nếu chưa tồn tại
                 new File(exportLocation).mkdirs();
+
+                System.out.println("Configuration loaded successfully!");
                 return true;
             } else {
-                System.err.println("Không tìm thấy dữ liệu cấu hình trong cơ sở dữ liệu.");
+                System.err.println("Configuration not found in database.");
             }
-        } catch (Exception e) {
-            System.err.println("Lỗi khi tải cấu hình từ cơ sở dữ liệu: " + e.getMessage());
+        } catch (SQLException e) {
+            System.err.println("Error loading configuration from database: " + e.getMessage());
         } finally {
-            // Đóng kết nối đến cơ sở dữ liệu
             JDBCUtil.closeConnection(conn);
         }
         return false;
     }
-
 
     // (4) Phương thức lấy ra danh sách liên kết của các sản phẩm
     private static List<String> getProductLinks(String url) {
@@ -301,35 +317,8 @@ public class CrawlProduct {
         }
 
     }
-
-    // Lấy địa chỉ email từ config
-    private static String getEmailFromDatabase() {
-        Connection conn = null;
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-        email = null;
-        try {
-            conn = JDBCUtil.getConnection();
-
-            // Truy vấn lấy email từ bảng control ( config )
-            String sql = "SELECT email FROM control WHERE id = 19";
-            pstmt = conn.prepareStatement(sql);
-
-            rs = pstmt.executeQuery();
-            if (rs.next()) {
-                email = rs.getString("email");
-            }
-        } catch (SQLException e) {
-            System.err.println("Error fetching email from database: " + e.getMessage());
-        } finally {
-            JDBCUtil.closeConnection(conn); // Đóng kết nối
-        }
-        return email;
-    }
-
     // (9) Gửi email báo thành công
     private static void sendSuccessEmail() {
-        email = getEmailFromDatabase(); // Lấy email từ config
         if (email == null) {
             System.err.println("Failed to retrieve email from database.");
             return;
@@ -351,7 +340,6 @@ public class CrawlProduct {
 
     // (6) Gửi email báo lỗi
     private static void sendErrorEmail(String errorMessage) {
-        email = getEmailFromDatabase(); // Lấy email từ config
         if (email == null) {
             System.err.println("Failed to retrieve email from database.");
             return;
