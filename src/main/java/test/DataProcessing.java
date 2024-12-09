@@ -118,20 +118,21 @@ public class DataProcessing {
             // 3.3.1. Kiểm tra nếu latestFile không phải null và không rỗng
             System.out.println("Đang load dữ liệu từ file: " + latestFile);
 
-            // Gọi stored procedure để load dữ liệu từ file vào bảng staging_laptop_data
-            String procedureCall = "{CALL load_data_from_file(?)}";
+            // Câu lệnh SQL để tải dữ liệu từ file CSV vào bảng laptop_data_temp
+            String sql = "LOAD DATA INFILE '" + latestFile + "' INTO TABLE staging_laptop_data " +
+                    "FIELDS TERMINATED BY ',' " +      // Cách phân tách các trường dữ liệu
+                    "ENCLOSED BY '\"' " +              // Ký tự bao quanh các trường dữ liệu
+                    "LINES TERMINATED BY '\\n' " +     // Cách phân tách các dòng dữ liệu
+                    "IGNORE 1 ROWS " +                 // Bỏ qua dòng đầu tiên (tiêu đề)
+                    "(name, price, trademark, type, status, cpu, ram, hard_drive, " +
+                    "screen, graphics_card, operating_system, warranty, import_date, expiration_date);";
 
-            try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
-                // Set tham số cho stored procedure
-                callableStatement.setString(1, latestFile);
-
-                // Thực thi stored procedure
-                callableStatement.execute();
+            try (Statement statement = connection.createStatement()) {
+                // Thực thi câu lệnh SQL
+                statement.execute(sql);
                 System.out.println("Dữ liệu đã được load thành công từ file: " + latestFile);
             } catch (SQLException e) {
-                // 3.3.4. Ghi log khi có lỗi trong quá trình thực thi câu lệnh SQL
-                logError(connection, latestFile, "Lỗi khi gọi procedure load_data_from_file: " + e.getMessage());
-                // 3.3.5. Gửi email khi có lỗi
+                logError(connection, latestFile, "Lỗi khi thực thi câu lệnh LOAD DATA INFILE: " + e.getMessage());
                 sendEmail("Lỗi trong quá trình load dữ liệu", "Có lỗi trong khi tải dữ liệu từ file: " + latestFile + ".\n" + e.getMessage());
                 e.printStackTrace();
             }
@@ -142,8 +143,6 @@ public class DataProcessing {
             sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy đường dẫn file hợp lệ: " + latestFile);
         }
     }
-
-
 
     // 3.4. Gọi procedure lọc sản phẩm từ bảng laptop_data_temp
     private static void filterProductProcedure(Connection connection, String latestFile) {

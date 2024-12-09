@@ -12,13 +12,13 @@ public class Test {
 //        Connection connection = JDBCUtil.getConnection();
 
         //2. Crawl data
-//        CrawlProduct.runCrawl();
+//  CrawlProduct.runCrawl();
 
         //3. Load to staging
-        DataProcessing.loadToStaging();
+     DataProcessing.loadToStaging();
 
         //4. Load to warehouse
-        //LoadToWarehouse.loadToWareHouse();
+//        LoadToWarehouse.loadToWareHouse();
 
         //5. Đóng kết nối
 //        JDBCUtil.closeConnection(connection);
