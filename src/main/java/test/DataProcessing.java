@@ -18,7 +18,7 @@ public class DataProcessing {
 
             if (latestFile == null) {
                 // 3.2.1.1. Ghi log khi không tìm thấy file data
-                logError(connection, latestFile, "Không tìm thấy file data");
+                logError(connection, latestFile, "load to staging","Không tìm thấy file data");
                 sendEmail("Không tìm thấy file data", "Hệ thống không tìm thấy file data mới nhất để load.");
             } else {
                 System.out.println("File mới nhất: " + latestFile);
@@ -42,8 +42,11 @@ public class DataProcessing {
             // 3.6. Gọi procedure cập nhật lại dữ liệu cho bảng staging_laptop_data
             updateStagingLaptopData(connection, latestFile);
 
-            // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
-            logProcessSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
+            // 3.7. Ghi log khi hoàn thành toàn bộ quá trình transform field thành công
+            logFieldSuccess(connection, "transform field ","transform field success");
+
+            // 3.8. Ghi log khi hoàn thành toàn bộ quá trình load to staging thành công
+            logStagingSuccess(connection, "load to staging","load to staging success");
 
         } catch (SQLException e) {
             e.printStackTrace();
@@ -58,7 +61,7 @@ public class DataProcessing {
 
             if (latestFile == null) {
                 // 3.2.1.1. Ghi log khi không tìm thấy file data
-                logError(connection,latestFile, "Không tìm thấy file data");
+                logError(connection, latestFile, "load to staging","Không tìm thấy file data");
                 sendEmail("Không tìm thấy file data", "Hệ thống không tìm thấy file data mới nhất để load.");
             } else {
                 System.out.println("File mới nhất: " + latestFile);
@@ -82,8 +85,11 @@ public class DataProcessing {
             // 3.6. Gọi procedure cập nhật lại dữ liệu cho bảng staging_laptop_data
             updateStagingLaptopData(connection, latestFile);
 
-            // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
-            logProcessSuccess(connection, "Dữ liệu đã được xử lý thành công và cập nhật vào staging_laptop_data.");
+            // 3.7. Ghi log khi hoàn thành toàn bộ quá trình transform field thành công
+            logFieldSuccess(connection, "transform field ","transform field success");
+
+            // 3.8. Ghi log khi hoàn thành toàn bộ quá trình load to staging thành công
+            logStagingSuccess(connection, "load to staging","load to staging success");
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -125,21 +131,22 @@ public class DataProcessing {
                     "LINES TERMINATED BY '\\n' " +     // Cách phân tách các dòng dữ liệu
                     "IGNORE 1 ROWS " +                 // Bỏ qua dòng đầu tiên (tiêu đề)
                     "(name, price, trademark, type, status, cpu, ram, hard_drive, " +
-                    "screen, graphics_card, operating_system, warranty, import_date, expiration_date);";
+                    "screen, graphics_card, operating_system, warranty, import_date, @expiration_date) " + // Sử dụng biến @expiration_date
+                    "SET expiration_date = '9999-12-31';"; // Gán giá trị mặc định cho expiration_date
 
             try (Statement statement = connection.createStatement()) {
                 // Thực thi câu lệnh SQL
                 statement.execute(sql);
                 System.out.println("Dữ liệu đã được load thành công từ file: " + latestFile);
             } catch (SQLException e) {
-                logError(connection, latestFile, "Lỗi khi thực thi câu lệnh LOAD DATA INFILE: " + e.getMessage());
+                logError(connection, latestFile, "load to staging","Lỗi khi thực thi câu lệnh LOAD DATA INFILE: " + e.getMessage());
                 sendEmail("Lỗi trong quá trình load dữ liệu", "Có lỗi trong khi tải dữ liệu từ file: " + latestFile + ".\n" + e.getMessage());
                 e.printStackTrace();
             }
         } else {
             // 3.3.1.1. Ghi log và gửi email khi không tìm thấy đường dẫn file hợp lệ
             System.out.println("Đường dẫn file không hợp lệ: " + latestFile);
-            logError(connection, latestFile, "Đường dẫn file không hợp lệ.");
+            logError(connection, latestFile,"load to staging","Đường dẫn file không hợp lệ.");
             sendEmail("Lỗi trong quá trình load dữ liệu", "Không tìm thấy đường dẫn file hợp lệ: " + latestFile);
         }
     }
@@ -155,16 +162,16 @@ public class DataProcessing {
                 e.printStackTrace();
             }
         } else {
-            // 3.4.1. Ghi log khi không tìm thấy procedure lọc sản phẩm
-            logError(connection, latestFile, "Không tìm thấy procedure lọc sản phẩm");
+            // 3.4.1 Ghi log khi không tìm thấy procedure lọc sản phẩm
+            logError(connection, latestFile, "load to staging","Không tìm thấy procedure lọc sản phẩm");
             sendEmail("Lỗi trong quá trình lọc sản phẩm", "Không tìm thấy procedure lọc sản phẩm.");
         }
     }
 
-    // 3.4.1. Kiểm tra kết quả sau khi load dữ liệu vào laptop_data_temp
+    // 3.4.1.1 Kiểm tra kết quả sau khi load dữ liệu vào laptop_data_temp
     private static void checkDataLoaded(Connection connection, String latestFile) {
         if (!checkDataLoaded(connection)) {
-            logError(connection, latestFile, "Không thể lọc ra sản phẩm tại dòng/cột...");
+            logError(connection, latestFile,"transform field","Không thể lọc ra sản phẩm tại dòng/cột...");
         }
     }
 
@@ -180,7 +187,7 @@ public class DataProcessing {
 
                     // 3.4.2.2. Kiểm tra sau khi xử lý null
                     if (!isNullHandlingSuccessful(connection)) {
-                        logError(connection, latestFile, "Lỗi khi xử lý dữ liệu null");
+                        logError(connection, latestFile, "transform field","Lỗi khi xử lý dữ liệu null");
                     }
                 } catch (SQLException e) {
                     e.printStackTrace();
@@ -201,13 +208,13 @@ public class DataProcessing {
                 System.out.println("Dữ liệu đã được load vào bảng dim thành công.");
                 if (!checkDataLoaded(connection)) {
                     // 3.5.1.1. Ghi log nếu load dữ liệu không thành công
-                    logError(connection, latestFile, "Không thể load dữ liệu vào bảng dim.");
+                    logError(connection, latestFile, "transform field","Không thể load dữ liệu vào bảng dim.");
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
             }
         } else {
-            logError(connection, latestFile, "Không tìm thấy procedure populate_dimensions");
+            logError(connection, latestFile, "transform field","Không tìm thấy procedure populate_dimensions");
             sendEmail("Lỗi trong quá trình load dữ liệu vào bảng dim", "Không tìm thấy procedure populate_dimensions.");
         }
     }
@@ -220,26 +227,45 @@ public class DataProcessing {
                 updateStagingStatement.execute();
                 System.out.println("Dữ liệu đã được cập nhật cho bảng staging_laptop_data.");
                 if (!checkDataLoaded(connection)) {
-                    logError(connection, latestFile, "Cập nhật dữ liệu vào bảng staging_laptop_data không thành công.");
+                    logError(connection, latestFile, "transform field","Cập nhật dữ liệu vào bảng staging_laptop_data không thành công.");
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
             }
         } else {
-            logError(connection, latestFile, "Không tìm thấy procedure update_staging_laptop_data");
+            logError(connection, latestFile, "transform field","Không tìm thấy procedure update_staging_laptop_data");
             sendEmail("Lỗi trong quá trình cập nhật dữ liệu bảng staging_laptop_data", "Không tìm thấy procedure update_staging_laptop_data.");
         }
     }
 
     // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
     // Gọi stored procedure log_process_success
-    public static void logProcessSuccess(Connection connection, String message) {
-        String storedProc = "{CALL log_process_success(?, ?, ?)}"; // Gọi stored procedure
+    public static void logFieldSuccess(Connection connection,String event, String message) {
+        String storedProc = "{CALL log_process_success(?, ?, ?, ?)}"; // Gọi stored procedure
 
         try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
             callableStatement.setInt(1, 19); // Tham số id_config
             callableStatement.setString(2, "data.csv"); // Tham số filename
-            callableStatement.setString(3, message); // Tham số message
+            callableStatement.setString(3, event);
+            callableStatement.setString(4, message); // Tham số message
+
+            // Thực thi stored procedure
+            callableStatement.execute();
+            System.out.println("Log thành công: " + message);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
+    // Gọi stored procedure log_process_success
+    public static void logStagingSuccess(Connection connection,String event, String message) {
+        String storedProc = "{CALL log_process_success(?, ?, ?, ?)}"; // Gọi stored procedure
+
+        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
+            callableStatement.setInt(1, 19); // Tham số id_config
+            callableStatement.setString(2, "data.csv"); // Tham số filename
+            callableStatement.setString(3, event);
+            callableStatement.setString(4, message); // Tham số message
 
             // Thực thi stored procedure
             callableStatement.execute();
@@ -249,15 +275,15 @@ public class DataProcessing {
         }
     }
 
-
     // Gọi stored procedure log_error
-    public static void logError(Connection connection, String fileName, String errorMessage) {
-        String storedProc = "{CALL log_error(?, ?, ?)}"; // Gọi stored procedure
+    public static void logError(Connection connection, String fileName ,String event ,String errorMessage) {
+        String storedProc = "{CALL log_error(?, ?, ?, ?)}"; // Gọi stored procedure
 
         try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
             callableStatement.setInt(1, 19); // Tham số id_config
             callableStatement.setString(2, fileName); // Tham số filename
-            callableStatement.setString(3, errorMessage); // Tham số error_message
+            callableStatement.setString(3, event); // Tham số filename
+            callableStatement.setString(4, errorMessage); // Tham số error_message
 
             // Thực thi stored procedure
             callableStatement.execute();
