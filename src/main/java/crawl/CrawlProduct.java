@@ -58,8 +58,6 @@ public class CrawlProduct {
             if (productLinks.isEmpty()) {
                 System.out.println("No more products found on page " + page + ". Stopping.");
 //                sendErrorEmail("No products found on page " + page);
-//                logErrorToYAML("Không tìm thấy dữ liệu của sản phẩm");
-
                 break;
             }
 
@@ -70,8 +68,7 @@ public class CrawlProduct {
                     allProducts.add(productDetails);
                 }
             }
-            // Nếu không có dữ liệu sản phẩm thì (6) gửi thông báo lỗi qua email, ghi log
-            // error và break
+            // Nếu không có dữ liệu sản phẩm thì (6) gửi thông báo lỗi qua email, ghi log error và break
             // Nếu có dữ liệu sản phẩm thì tiếp tục
             if (allProducts.isEmpty()) {
                 System.out.println("No product data found from the links. Sending error email...");
@@ -83,7 +80,6 @@ public class CrawlProduct {
             page++;
 
         }
-
         // Xuất File ( bao gồm 7. thêm dữ liệu vào file và 8. xuất ra file csv )
         exportToCSV(allProducts);
         // 9. Gửi email thông báo xuất file thành công
@@ -91,37 +87,56 @@ public class CrawlProduct {
         // 10. Ghi log sau khi export CSV thành công
         logSuccessToDatabase(fileName_2, count, fileSizeKB);
         System.out.println("\nScraping completed.");
+
+
     }
 
-    // Tải cấu hình từ file config
+    // (2) Tải cấu hình từ file config
     // Lấy địa chỉ lưu file trong config và gán cho exportLocation
     private static boolean loadConfigFromDatabase() {
         Connection conn = null;
+        CallableStatement cstmt = null;
 
         try {
             conn = JDBCUtil.getConnection();
-            Statement stmt = conn.createStatement();
 
-            // Thực thi câu truy vấn để lấy dữ liệu cấu hình ( từ id 19 )
-            ResultSet rs = stmt.executeQuery("SELECT source, source_location FROM control WHERE id = '19'");
+            // Gọi stored procedure
+            String storedProc = "{CALL load_config_data(?, ?, ?, ?)}";
+            cstmt = conn.prepareCall(storedProc);
 
-            if (rs.next()) {
-                // Gán các giá trị từ kết quả truy vấn
-                // Đường dẫn source
-                sourceUrl = rs.getString("source");
-                // Địa chỉ lưu file csv
-                exportLocation = rs.getString("source_location");
+            // Thiết lập tham số đầu vào
+            cstmt.setInt(1, 19); // ID của cấu hình cần lấy
 
-                // Tạo thư mục xuất nếu nó chưa tồn tại
+
+            cstmt.registerOutParameter(2, java.sql.Types.VARCHAR); // source
+            cstmt.registerOutParameter(3, java.sql.Types.VARCHAR); // source_location
+            cstmt.registerOutParameter(4, java.sql.Types.VARCHAR); // email
+
+            // Thực thi stored procedure
+            cstmt.execute();
+
+            // Lấy kết quả từ các tham số đầu ra
+            String source = cstmt.getString(2);
+            String sourceLocation = cstmt.getString(3);
+            String emailConfig = cstmt.getString(4);
+
+            if (source != null && sourceLocation != null && emailConfig != null) {
+                // Gán giá trị cho các biến global
+                sourceUrl = source;
+                exportLocation = sourceLocation;
+                email = emailConfig; // email
+
+                // Tạo thư mục nếu chưa tồn tại
                 new File(exportLocation).mkdirs();
+
+                System.out.println("Configuration loaded successfully!");
                 return true;
             } else {
-                System.err.println("Không tìm thấy dữ liệu cấu hình trong cơ sở dữ liệu.");
+                System.err.println("Configuration not found in database.");
             }
-        } catch (Exception e) {
-            System.err.println("Lỗi khi tải cấu hình từ cơ sở dữ liệu: " + e.getMessage());
+        } catch (SQLException e) {
+            System.err.println("Error loading configuration from database: " + e.getMessage());
         } finally {
-            // Đóng kết nối đến cơ sở dữ liệu
             JDBCUtil.closeConnection(conn);
         }
         return false;
@@ -131,7 +146,10 @@ public class CrawlProduct {
     private static List<String> getProductLinks(String url) {
         List<String> productLinks = new ArrayList<>();
         try {
-            Document doc = Jsoup.connect(url).userAgent("Mozilla/5.0").timeout(10000).get();
+            Document doc = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0")
+                    .timeout(10000)
+                    .get();
             System.out.println("Successfully fetched the product list from " + url + ".");
             Elements productDivs = doc.select("div.product-img");
 
@@ -149,13 +167,16 @@ public class CrawlProduct {
         return productLinks;
     }
 
-    // (5) Phương thức Lấy dữ liệu chi tiết của sản phẩm
+    // (5)  Phương thức Lấy dữ liệu chi tiết của sản phẩm
     private static Map<String, String> scrapeProductDetails(String url) {
         // Tạo một map để lưu trữ chi tiết sản phẩm với thứ tự bảo toàn
         Map<String, String> productDetails = new LinkedHashMap<>();
         try {
             // Kết nối tới URL sản phẩm, cài đặt user agent và thời gian chờ
-            Document doc = Jsoup.connect(url).userAgent("Mozilla/5.0").timeout(10000).get();
+            Document doc = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0")
+                    .timeout(10000)
+                    .get();
             System.out.println("Successfully fetched the product details from " + url + ".");
 
             // Lấy tên sản phẩm
@@ -170,8 +191,7 @@ public class CrawlProduct {
 
             // Lấy thương hiệu sản phẩm
             Element brandTag = doc.selectFirst("div.pro-brand");
-            String brand = brandTag != null ? brandTag.text().replaceFirst("(?i)Thương hiệu\\s*:", "").trim()
-                    : "Not Found";
+            String brand = brandTag != null ? brandTag.text().replaceFirst("(?i)Thương hiệu\\s*:", "").trim() : "Not Found";
             productDetails.put("Thương hiệu", brand);
 
             // Lấy loại sản phẩm
@@ -181,8 +201,7 @@ public class CrawlProduct {
 
             // Lấy tình trạng sản phẩm
             Element stockTag = doc.selectFirst("div.pro-stock");
-            String stock = stockTag != null ? stockTag.text().replaceFirst("(?i)Tình trạng\\s*:", "").trim()
-                    : "Not Found";
+            String stock = stockTag != null ? stockTag.text().replaceFirst("(?i)Tình trạng\\s*:", "").trim() : "Not Found";
             productDetails.put("Tình trạng", stock);
 
             // Lấy các mô tả sản phẩm, bỏ qua thông tin "Màu sắc"
@@ -200,12 +219,12 @@ public class CrawlProduct {
             }
 
             // Ánh xạ các mô tả với các trường cụ thể như CPU, RAM, v.v.
-            String[] headers = { "CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành" };
+            String[] headers = {"CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành"};
             for (int i = 0; i < headers.length; i++) {
                 if (i < descriptions.size()) {
-                    // Loại bỏ tiền tố (như "CPU:", "RAM:") và dấu hai chấm, không phân biệt chữ
-                    // hoa/thường
-                    String description = descriptions.get(i).replaceFirst("(?i)^" + headers[i] + "\\s*:\\s*", "")
+                    // Loại bỏ tiền tố (như "CPU:", "RAM:") và dấu hai chấm, không phân biệt chữ hoa/thường
+                    String description = descriptions.get(i)
+                            .replaceFirst("(?i)^" + headers[i] + "\\s*:\\s*", "")
                             .trim();
                     productDetails.put(headers[i], description);
                 } else {
@@ -240,12 +259,15 @@ public class CrawlProduct {
         String timestamp = LocalDateTime.now().format(formatter);
         fileName = exportLocation + "\\" + "data_" + timestamp + ".csv";
         fileName_2 = "data_" + timestamp + ".csv";
-        List<String> headersList = Arrays.asList("Tên sản phẩm", "Giá", "Thương hiệu", "Loại", "Tình trạng", "CPU",
-                "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa", "Hệ điều hành", "Bảo hành", "Ngày nhập", "Ngày hết hạn");
+        List<String> headersList = Arrays.asList(
+                "Tên sản phẩm", "Giá", "Thương hiệu", "Loại", "Tình trạng",
+                "CPU", "RAM", "Đĩa cứng", "Màn hình", "Card đồ họa",
+                "Hệ điều hành", "Bảo hành", "Ngày nhập", "Ngày hết hạn"
+        );
 
         count = 0; // Đếm số dòng đã ghi
-        // (7) Thêm dữ liệu vào File
-        // (8) Xuất dữ liệu ra file csv tới địa chỉ trong config
+        //  (7) Thêm dữ liệu vào File
+        //  (8) Xuất dữ liệu ra file csv tới địa chỉ trong config
         try (FileWriter fileWriter = new FileWriter(fileName)) {
             // Ghi tiêu đề vào file CSV
             fileWriter.write(String.join(",", headersList) + "\n");
@@ -267,7 +289,7 @@ public class CrawlProduct {
                                 double decimalPrice = Double.parseDouble(cleanedPrice);
                                 value = String.format("%.2f", decimalPrice);
                             } catch (NumberFormatException e) {
-                                System.err.println("Fail to format price " + value);
+                                System.err.println("Lỗi khi chuyển đổi giá: " + value);
                                 value = "0.00"; // Giá trị mặc định nếu chuyển đổi thất bại
                             }
                         }
@@ -288,41 +310,15 @@ public class CrawlProduct {
             File csvFile = new File(fileName);
             fileSizeKB = csvFile.length() / 1024.0;
 
+
         } catch (IOException e) {
             System.err.println("Error writing to CSV file: " + e.getMessage());
 //            sendErrorEmail("Error writing to CSV file: " + e.getMessage());
         }
 
     }
-
-    // Lấy địa chỉ email từ config
-    private static String getEmailFromDatabase() {
-        Connection conn = null;
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-        email = null;
-        try {
-            conn = JDBCUtil.getConnection();
-
-            // Truy vấn lấy email từ bảng control ( config )
-            String sql = "SELECT email FROM control WHERE id = 19";
-            pstmt = conn.prepareStatement(sql);
-
-            rs = pstmt.executeQuery();
-            if (rs.next()) {
-                email = rs.getString("email");
-            }
-        } catch (SQLException e) {
-            System.err.println("Error fetching email from database: " + e.getMessage());
-        } finally {
-            JDBCUtil.closeConnection(conn); // Đóng kết nối
-        }
-        return email;
-    }
-
     // (9) Gửi email báo thành công
     private static void sendSuccessEmail() {
-        email = getEmailFromDatabase(); // Lấy email từ config
         if (email == null) {
             System.err.println("Failed to retrieve email from database.");
             return;
@@ -332,9 +328,10 @@ public class CrawlProduct {
 
         String subject = "Success Notification: Crawl data "; // Tiêu đề
         String message = "Scraping completed successfully!\n\n" + // Nội dung
-                "Total products scraped: " + count + "\n" + "Export file location: " + fileName + "\n" + "File name: "
-                + fileName_2 + "\n" + "Completion time: "
-                + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                "Total products scraped: " + count + "\n" +
+                "Export file location: " + fileName + "\n" +
+                "File name: " + fileName_2 + "\n" +
+                "Completion time: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         boolean sent = emailService.send(email, subject, message);
         if (!sent) {
             System.err.println("Failed to send success notification email");
@@ -343,7 +340,6 @@ public class CrawlProduct {
 
     // (6) Gửi email báo lỗi
     private static void sendErrorEmail(String errorMessage) {
-        email = getEmailFromDatabase(); // Lấy email từ config
         if (email == null) {
             System.err.println("Failed to retrieve email from database.");
             return;
@@ -358,65 +354,88 @@ public class CrawlProduct {
         }
     }
 
+
     // (10) Ghi log nếu thành công export ra file csv
     private static void logSuccessToDatabase(String fileName, int count, double fileSizeKB) {
         Connection conn = null;
         CallableStatement cstmt = null;
         try {
+            // Lấy kết nối từ JDBCUtil
             conn = JDBCUtil.getConnection();
 
-            // Gọi stored procedure LogSuccessToDatabase
-            String sql = "{CALL LogSuccessToDatabase(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
-            cstmt = conn.prepareCall(sql);
+            // Gọi stored procedure
+            String storedProc = "{CALL log_crawl(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            cstmt = conn.prepareCall(storedProc);
 
-            // Gán giá trị cho các tham số
-            cstmt.setInt(1, 19); // ID_config giả định là 19
-            cstmt.setString(2, fileName); // Tên file
-            cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // Ngày hiện tại
-            cstmt.setString(4, "crawler data"); // Event
-            cstmt.setString(5, "SU"); // Status (Success)
-            cstmt.setInt(6, count); // Số lượng
-            cstmt.setDouble(7, fileSizeKB); // Kích thước file
-            cstmt.setTimestamp(8, Timestamp.valueOf(LocalDateTime.now())); // Thời gian hiện tại
-            cstmt.setString(9, ""); // Không có lỗi (Error message rỗng)
+            // Thiết lập các tham số cho stored procedure
+            cstmt.setInt(1, 19); // id_config
+            cstmt.setString(2, fileName); // filename
+            cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // date
+            cstmt.setString(4, "crawler data"); // event
+            cstmt.setString(5, "SU"); // status
+            cstmt.setInt(6, count); // count
+            cstmt.setDouble(7, fileSizeKB); // file_size
+            cstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now())); // dt_update
+            cstmt.setString(9, ""); // error_message
 
             // Thực thi stored procedure
             cstmt.execute();
-            System.out.println("Logged success to database successfully using stored procedure.");
+            System.out.println("Logged success to database");
         } catch (SQLException e) {
-            System.err.println("Error logging to database: " + e.getMessage());
+            System.err.println("Error while logging to database: " + e.getMessage());
         } finally {
-            JDBCUtil.closeConnection(conn); // Đóng kết nối
+            // Đóng CallableStatement và Connection
+            if (cstmt != null) {
+                try {
+                    cstmt.close();
+                } catch (SQLException e) {
+                    System.err.println("Error closing CallableStatement: " + e.getMessage());
+                }
+            }
+            JDBCUtil.closeConnection(conn);
         }
     }
 
+
     // (10) Ghi log nếu có lỗi
-        private static void logErrorToDatabase(String errorMessage) {
-            Connection conn = null;
-            CallableStatement cstmt = null;
-            try {
-                conn = JDBCUtil.getConnection();
+    private static void logErrorToDatabase(String errorMessage) {
+        Connection conn = null;
+        CallableStatement cstmt = null;
+        try {
+            // Lấy kết nối từ JDBCUtil
+            conn = JDBCUtil.getConnection();
 
-                // Gọi stored procedure LogErrorToDatabase
-                String sql = "{CALL LogErrorToDatabase(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
-                cstmt = conn.prepareCall(sql);
+            // Gọi stored procedure
+            String storedProc = "{CALL log_crawl(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            cstmt = conn.prepareCall(storedProc);
 
-                cstmt.setInt(1, 19); // ID_config giả định là 19
-                cstmt.setString(2, ""); // Filename để trống
-                cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // Ngày hiện tại
-                cstmt.setString(4, "crawler data"); // Event
-                cstmt.setString(5, "ER"); // Status
-                cstmt.setNull(6, Types.INTEGER); // Count null
-                cstmt.setNull(7, Types.INTEGER); // File size null
-                cstmt.setTimestamp(8, Timestamp.valueOf(LocalDateTime.now())); // Timestamp hiện tại
-                cstmt.setString(9, errorMessage); // Error message
+            // Thiết lập các tham số cho stored procedure
+            cstmt.setInt(1, 19); // id_config
+            cstmt.setString(2, ""); // tên file
+            cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // date
+            cstmt.setString(4, "crawler data");
+            cstmt.setString(5, "ER"); // trạng thái
+            cstmt.setInt(6, count); // count
+            cstmt.setInt(7, (int) fileSizeKB); // file_size// kích thước file
+            cstmt.setTimestamp(8, java.sql.Timestamp.valueOf(LocalDateTime.now()));
+            cstmt.setString(9, errorMessage);
 
-                cstmt.execute();
-                System.out.println("Logged error to database successfully using stored procedure.");
-            } catch (SQLException e) {
-                System.err.println("Error logging to database: " + e.getMessage());
-            } finally {
-                JDBCUtil.closeConnection(conn); // Đóng kết nối
+            // Thực thi stored procedure
+            cstmt.execute();
+            System.out.println("Logged error to database successfully");
+        } catch (SQLException e) {
+            System.err.println("Error while logging to database: " + e.getMessage());
+        } finally {
+            // Đóng CallableStatement và Connection
+            if (cstmt != null) {
+                try {
+                    cstmt.close();
+                } catch (SQLException e) {
+                    System.err.println("Error closing CallableStatement: " + e.getMessage());
+                }
             }
+            JDBCUtil.closeConnection(conn);
         }
+    }
 }
+
