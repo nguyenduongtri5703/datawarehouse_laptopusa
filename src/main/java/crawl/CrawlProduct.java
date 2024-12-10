@@ -33,6 +33,8 @@ public class CrawlProduct {
     private static double fileSizeKB;
     // Khởi tạo EmailService
     private static final IJavaMail emailService = new EmailService();
+    // Procedure cho việc ghi log
+    private static String logCrawlProcedure;
 
     public static void runCrawl() {
 
@@ -95,18 +97,49 @@ public class CrawlProduct {
     // Lấy địa chỉ lưu file trong config và gán cho exportLocation
     private static boolean loadConfigFromDatabase() {
         Connection conn = null;
+        PreparedStatement pstmt = null;
         CallableStatement cstmt = null;
+        ResultSet rs = null;
 
         try {
             conn = JDBCUtil.getConnection();
+            // Truy vấn tên stored procedure cho việc ghi log từ bảng control config
+            String queryLogCrawl = "SELECT procedure_name FROM control WHERE id = 22";
+            try (PreparedStatement pstmtLogCrawl = conn.prepareStatement(queryLogCrawl);
+                 ResultSet rsLogCrawl = pstmtLogCrawl.executeQuery()) {
 
-            // Gọi stored procedure
-            String storedProc = "{CALL load_config_data(?, ?, ?, ?)}";
+                if (rsLogCrawl.next()) {
+                    logCrawlProcedure = rsLogCrawl.getString("procedure_name");
+                    if (logCrawlProcedure != null) {
+                        System.out.println("LogCrawl procedure loaded successfully: " + logCrawlProcedure);
+                    } else {
+                        System.err.println("LogCrawl procedure name is null for ID 22.");
+                    }
+                } else {
+                    System.err.println("No procedure found for ID 22.");
+                }
+            }
+            // Truy vấn tên stored procedure từ bảng control config cho việc lấy email, export location, source
+            String query = "SELECT procedure_name FROM control WHERE id = 23";
+            pstmt = conn.prepareStatement(query);
+            rs = pstmt.executeQuery();
+
+            String procedureName = null;
+            if (rs.next()) {
+                procedureName = rs.getString("procedure_name");
+            }
+
+            if (procedureName == null) {
+                System.err.println("Procedure name not found for ID 23");
+                return false;
+            }
+
+            // Gọi stored procedure load config data
+            String storedProc = "{CALL " + procedureName + "(?, ?, ?, ?)}";
             cstmt = conn.prepareCall(storedProc);
 
             // Thiết lập tham số đầu vào
             cstmt.setInt(1, 19); // ID của cấu hình cần lấy
-
 
             cstmt.registerOutParameter(2, java.sql.Types.VARCHAR); // source
             cstmt.registerOutParameter(3, java.sql.Types.VARCHAR); // source_location
@@ -121,10 +154,10 @@ public class CrawlProduct {
             String emailConfig = cstmt.getString(4);
 
             if (source != null && sourceLocation != null && emailConfig != null) {
-                // Gán giá trị cho các biến global
+                // Gán giá trị cho các biến
                 sourceUrl = source;
                 exportLocation = sourceLocation;
-                email = emailConfig; // email
+                email = emailConfig;
 
                 // Tạo thư mục nếu chưa tồn tại
                 new File(exportLocation).mkdirs();
@@ -137,10 +170,12 @@ public class CrawlProduct {
         } catch (SQLException e) {
             System.err.println("Error loading configuration from database: " + e.getMessage());
         } finally {
+            // Đóng kết nối
             JDBCUtil.closeConnection(conn);
         }
         return false;
     }
+
 
     // (4) Phương thức lấy ra danh sách liên kết của các sản phẩm
     private static List<String> getProductLinks(String url) {
@@ -364,7 +399,7 @@ public class CrawlProduct {
             conn = JDBCUtil.getConnection();
 
             // Gọi stored procedure
-            String storedProc = "{CALL log_crawl(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            String storedProc = "{CALL " + logCrawlProcedure + "(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             cstmt = conn.prepareCall(storedProc);
 
             // Thiết lập các tham số cho stored procedure
@@ -406,7 +441,7 @@ public class CrawlProduct {
             conn = JDBCUtil.getConnection();
 
             // Gọi stored procedure
-            String storedProc = "{CALL log_crawl(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+            String storedProc = "{CALL " + logCrawlProcedure + "(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             cstmt = conn.prepareCall(storedProc);
 
             // Thiết lập các tham số cho stored procedure
