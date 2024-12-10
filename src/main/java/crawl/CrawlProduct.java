@@ -324,7 +324,7 @@ public class CrawlProduct {
                                 double decimalPrice = Double.parseDouble(cleanedPrice);
                                 value = String.format("%.2f", decimalPrice);
                             } catch (NumberFormatException e) {
-                                System.err.println("Lỗi khi chuyển đổi giá: " + value);
+                                System.err.println("Error converting price: " + value);
                                 value = "0.00"; // Giá trị mặc định nếu chuyển đổi thất bại
                             }
                         }
@@ -398,11 +398,11 @@ public class CrawlProduct {
             // Lấy kết nối từ JDBCUtil
             conn = JDBCUtil.getConnection();
 
-            // Gọi stored procedure
+            // Gọi stored procedure log crawl thực hiện việc ghi log
             String storedProc = "{CALL " + logCrawlProcedure + "(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             cstmt = conn.prepareCall(storedProc);
 
-            // Thiết lập các tham số cho stored procedure
+            // Thiết lập các tham số cho procedure
             cstmt.setInt(1, 19); // id_config
             cstmt.setString(2, fileName); // filename
             cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // date
@@ -440,11 +440,11 @@ public class CrawlProduct {
             // Lấy kết nối từ JDBCUtil
             conn = JDBCUtil.getConnection();
 
-            // Gọi stored procedure
+            // Gọi stored procedure log crawl thực hiện việc ghi log
             String storedProc = "{CALL " + logCrawlProcedure + "(?, ?, ?, ?, ?, ?, ?, ?, ?)}";
             cstmt = conn.prepareCall(storedProc);
 
-            // Thiết lập các tham số cho stored procedure
+            // Thiết lập các tham số cho procedure
             cstmt.setInt(1, 19); // id_config
             cstmt.setString(2, ""); // tên file
             cstmt.setDate(3, java.sql.Date.valueOf(LocalDate.now())); // date
