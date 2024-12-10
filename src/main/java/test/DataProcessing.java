@@ -240,58 +240,88 @@ public class DataProcessing {
 
     // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
     // Gọi stored procedure log_process_success
-    public static void logFieldSuccess(Connection connection,String event, String message) {
-        String storedProc = "{CALL log_process_success(?, ?, ?, ?)}"; // Gọi stored procedure
+    public static void logFieldSuccess(Connection connection, String event, String message) {
+        // Lấy tên stored procedure từ bảng control
+        String procedureName = getProcedureName(connection, "log_process_success");
 
-        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
-            callableStatement.setInt(1, 19); // Tham số id_config
-            callableStatement.setString(2, "data.csv"); // Tham số filename
-            callableStatement.setString(3, event);
-            callableStatement.setString(4, message); // Tham số message
+        if (procedureName != null) {
+            try (CallableStatement callableStatement = connection.prepareCall("{CALL " + procedureName + "(?, ?, ?, ?)}")) {
+                callableStatement.setInt(1, 19); // Tham số id_config
+                callableStatement.setString(2, "data.csv"); // Tham số filename
+                callableStatement.setString(3, event); // Tham số event
+                callableStatement.setString(4, message); // Tham số message
 
-            // Thực thi stored procedure
-            callableStatement.execute();
-            System.out.println("Log thành công: " + message);
-        } catch (SQLException e) {
-            e.printStackTrace();
+                // Thực thi stored procedure
+                callableStatement.execute();
+                System.out.println("Log thành công: " + message);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        } else {
+            // Xử lý trường hợp không tìm thấy stored procedure
+            System.err.println("Không tìm thấy procedure log_process_success trong bảng control.");
+            sendEmail("Lỗi ghi log thành công", "Không tìm thấy procedure log_process_success.");
         }
     }
+
     // 3.7. Ghi log khi hoàn thành toàn bộ quá trình thành công
     // Gọi stored procedure log_process_success
-    public static void logStagingSuccess(Connection connection,String event, String message) {
-        String storedProc = "{CALL log_process_success(?, ?, ?, ?)}"; // Gọi stored procedure
+    public static void logStagingSuccess(Connection connection, String event, String message) {
+        // Lấy tên stored procedure từ bảng control
+        String procedureName = getProcedureName(connection, "log_process_success");
 
-        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
-            callableStatement.setInt(1, 19); // Tham số id_config
-            callableStatement.setString(2, "data.csv"); // Tham số filename
-            callableStatement.setString(3, event);
-            callableStatement.setString(4, message); // Tham số message
+        if (procedureName != null) {
+            String procedureCall = "{CALL " + procedureName + "(?, ?, ?, ?)}"; // Câu lệnh CALL với tên procedure động
 
-            // Thực thi stored procedure
-            callableStatement.execute();
-            System.out.println("Log thành công: " + message);
-        } catch (SQLException e) {
-            e.printStackTrace();
+            try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+                // Set các tham số cho procedure
+                callableStatement.setInt(1, 19); // Tham số id_config
+                callableStatement.setString(2, "data.csv"); // Tham số filename
+                callableStatement.setString(3, event);      // Tham số event
+                callableStatement.setString(4, message);    // Tham số message
+
+                // Thực thi stored procedure
+                callableStatement.execute();
+                System.out.println("Log thành công: " + message);
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi gọi stored procedure: " + e.getMessage());
+            }
+        } else {
+            // Xử lý nếu không tìm thấy tên procedure
+            System.err.println("Không tìm thấy procedure log_process_success trong bảng control.");
+            sendEmail("Lỗi ghi log staging", "Không tìm thấy procedure log_process_success.");
         }
     }
+
 
     // Gọi stored procedure log_error
-    public static void logError(Connection connection, String fileName ,String event ,String errorMessage) {
-        String storedProc = "{CALL log_error(?, ?, ?, ?)}"; // Gọi stored procedure
+    public static void logError(Connection connection, String fileName, String event, String errorMessage) {
+        // Lấy tên stored procedure từ bảng control
+        String procedureName = getProcedureName(connection, "log_error");
 
-        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
-            callableStatement.setInt(1, 19); // Tham số id_config
-            callableStatement.setString(2, fileName); // Tham số filename
-            callableStatement.setString(3, event); // Tham số filename
-            callableStatement.setString(4, errorMessage); // Tham số error_message
+        if (procedureName != null) {
+            String procedureCall = "{CALL " + procedureName + "(?, ?, ?, ?)}"; // Câu lệnh CALL với tên procedure động
 
-            // Thực thi stored procedure
-            callableStatement.execute();
-            System.out.println("Log lỗi đã được ghi: " + errorMessage);
-        } catch (SQLException e) {
-            e.printStackTrace();
+            try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+                // Set các tham số cho procedure
+                callableStatement.setInt(1, 19);           // Tham số id_config
+                callableStatement.setString(2, fileName);  // Tham số filename
+                callableStatement.setString(3, event);     // Tham số event
+                callableStatement.setString(4, errorMessage); // Tham số error_message
+
+                // Thực thi stored procedure
+                callableStatement.execute();
+                System.out.println("Log lỗi đã được ghi: " + errorMessage);
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi gọi stored procedure: " + e.getMessage());
+            }
+        } else {
+            // Xử lý nếu không tìm thấy tên procedure
+            System.err.println("Không tìm thấy procedure log_error trong bảng control.");
+            sendEmail("Lỗi ghi log lỗi", "Không tìm thấy procedure log_error.");
         }
     }
+
 
     private static void sendEmail(String subject, String messageContent) {
         EmailService emailService = new EmailService();
@@ -319,38 +349,58 @@ public class DataProcessing {
 
     // Gọi stored procedure check_data_loaded
     public static boolean checkDataLoaded(Connection connection) {
-        String storedProc = "{CALL check_data_loaded(?)}"; // Gọi stored procedure
+        // Lấy tên stored procedure từ bảng control
+        String procedureName = getProcedureName(connection, "check_data_loaded");
 
-        try (CallableStatement callableStatement = connection.prepareCall(storedProc)) {
-            callableStatement.registerOutParameter(1, Types.BOOLEAN); // Đăng ký tham số OUT
+        if (procedureName != null) {
+            String procedureCall = "{CALL " + procedureName + "(?)}"; // Câu lệnh CALL với tên procedure động
 
-            // Thực thi stored procedure
-            callableStatement.execute();
+            try (CallableStatement callableStatement = connection.prepareCall(procedureCall)) {
+                // Đăng ký tham số OUT
+                callableStatement.registerOutParameter(1, Types.BOOLEAN);
 
-            // Lấy giá trị tham số OUT
-            return callableStatement.getBoolean(1);
-        } catch (SQLException e) {
-            e.printStackTrace();
+                // Thực thi stored procedure
+                callableStatement.execute();
+
+                // Lấy giá trị tham số OUT
+                return callableStatement.getBoolean(1);
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi gọi stored procedure: " + e.getMessage());
+            }
+        } else {
+            // Xử lý nếu không tìm thấy tên procedure
+            System.err.println("Không tìm thấy procedure check_data_loaded trong bảng control.");
+            sendEmail("Lỗi kiểm tra dữ liệu", "Không tìm thấy procedure check_data_loaded.");
         }
         return false;
     }
+
 
     private static boolean isDataEmpty(Connection connection) {
-        // Gọi Stored Procedure trong MySQL
-        String procedureCall = "{CALL check_if_data_empty()}";
+        // Lấy tên stored procedure từ bảng control
+        String procedureName = getProcedureName(connection, "check_if_data_empty");
 
-        try (CallableStatement stmt = connection.prepareCall(procedureCall);
-             ResultSet rs = stmt.executeQuery()) {
+        if (procedureName != null) {
+            String procedureCall = "{CALL " + procedureName + "}"; // Câu lệnh CALL với tên procedure động
 
-            if (rs.next()) {
-                int total = rs.getInt("total");
-                return total > 0;
+            try (CallableStatement stmt = connection.prepareCall(procedureCall);
+                 ResultSet rs = stmt.executeQuery()) {
+
+                if (rs.next()) {
+                    int total = rs.getInt("total"); // Lấy giá trị cột "total"
+                    return total > 0;              // Kiểm tra nếu total > 0 thì không rỗng
+                }
+            } catch (SQLException e) {
+                System.err.println("Lỗi khi gọi stored procedure: " + e.getMessage());
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
+        } else {
+            // Xử lý nếu không tìm thấy tên procedure
+            System.err.println("Không tìm thấy procedure check_if_data_empty trong bảng control.");
+            sendEmail("Lỗi kiểm tra dữ liệu trống", "Không tìm thấy procedure check_if_data_empty.");
         }
         return false;
     }
+
 
 
     private static boolean isNullHandlingSuccessful(Connection connection) {
