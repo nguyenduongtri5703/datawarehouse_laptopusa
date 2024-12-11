@@ -18,31 +18,48 @@ public class LoadToWarehouse {
             }
 
             // 4.2 Kiểm tra trạng thái "Transform field"
-            String transformCheckQuery = "SELECT * FROM log WHERE event = 'transform field' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
-            try (PreparedStatement transformCheckStmt = connection.prepareStatement(transformCheckQuery);
-                 ResultSet transformCheckResult = transformCheckStmt.executeQuery()) {
-                if (!transformCheckResult.next()) {
-                    System.out.println("Chưa thực hiện transform field. Dừng quá trình.");
-                    return;
+            String transformCheckProc = getProcedureName(connection, "check_transform_field");
+            if (transformCheckProc != null) {
+                try (CallableStatement stmt = connection.prepareCall("{CALL " + transformCheckProc + "()}")) {
+                    ResultSet rs = stmt.executeQuery();
+                    if (!rs.next() || rs.getInt(1) == 0) { // Giả định stored procedure trả về một giá trị
+                        System.out.println("Chưa thực hiện transform field. Dừng quá trình.");
+                        return;
+                    }
                 }
+            } else {
+                System.out.println("Không tìm thấy procedure check_transform_field.");
+                return;
             }
 
             // 4.3 Kiểm tra trạng thái "Load to Data Warehouse"
-            String loadCheckQuery = "SELECT * FROM log WHERE event = 'load to data warehouse' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
-            try (PreparedStatement loadCheckStmt = connection.prepareStatement(loadCheckQuery);
-                 ResultSet loadCheckResult = loadCheckStmt.executeQuery()) {
-                if (loadCheckResult.next()) {
-                    System.out.println("Đã thực hiện load to warehouse.");
-                    return;
+            String loadCheckProc = getProcedureName(connection, "check_load_to_dw");
+            if (loadCheckProc != null) {
+                try (CallableStatement stmt = connection.prepareCall("{CALL " + loadCheckProc + "()}")) {
+                    ResultSet rs = stmt.executeQuery();
+                    if (rs.next() && rs.getInt(1) > 0) { // Giả định stored procedure trả về một giá trị
+                        System.out.println("Đã thực hiện load to warehouse.");
+                        return;
+                    }
                 }
+            } else {
+                System.out.println("Không tìm thấy procedure check_load_to_dw.");
+                return;
             }
 
             // 4.4 Ghi log "bắt đầu thực hiện load to warehouse"
-            String startLogQuery = "INSERT INTO log(event, status, dt_update) VALUES ('load to data warehouse', 'IP', ?)";
-            try (PreparedStatement startLogStmt = connection.prepareStatement(startLogQuery)) {
-                startLogStmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
-                startLogStmt.executeUpdate();
-                System.out.println("Bắt đầu thực hiện load to warehouse.");
+            String logStartProc = getProcedureName(connection, "log_event");
+            if (logStartProc != null) {
+                try (CallableStatement stmt = connection.prepareCall("{CALL " + logStartProc + "(?, ?, ?)}")) {
+                    stmt.setString(1, "load to data warehouse");
+                    stmt.setString(2, "IP");
+                    stmt.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
+                    stmt.execute();
+                    System.out.println("Bắt đầu thực hiện load to warehouse.");
+                }
+            } else {
+                System.out.println("Không tìm thấy procedure log_event.");
+                return;
             }
 
             // 4.5

@@ -18,7 +18,7 @@ public class Test {
 //  DataProcessing.loadToStaging();
 
         //4. Load to warehouse
-       LoadToWarehouse.loadToWareHouse();
+//       LoadToWarehouse.loadToWareHouse();
 
         //5. Đóng kết nối
 //        JDBCUtil.closeConnection(connection);
