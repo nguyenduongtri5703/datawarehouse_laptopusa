@@ -9,12 +9,43 @@ import java.time.LocalDateTime;
 public class LoadToWarehouse {
 
     public static void loadToWareHouse() {
+
+        // 4.1 Kết nối DB
         try (Connection connection = JDBCUtil.getConnection()) { // Sử dụng try-with-resources để tự động đóng kết nối
             if (connection == null) {
                 System.out.println("Không thể kết nối tới cơ sở dữ liệu.");
                 return;
             }
 
+            // 4.2 Kiểm tra trạng thái "Transform field"
+            String transformCheckQuery = "SELECT * FROM log WHERE event = 'transform field' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
+            try (PreparedStatement transformCheckStmt = connection.prepareStatement(transformCheckQuery);
+                 ResultSet transformCheckResult = transformCheckStmt.executeQuery()) {
+                if (!transformCheckResult.next()) {
+                    System.out.println("Chưa thực hiện transform field. Dừng quá trình.");
+                    return;
+                }
+            }
+
+            // 4.3 Kiểm tra trạng thái "Load to Data Warehouse"
+            String loadCheckQuery = "SELECT * FROM log WHERE event = 'load to data warehouse' AND DATE(dt_update) = CURDATE() AND status = 'SU'";
+            try (PreparedStatement loadCheckStmt = connection.prepareStatement(loadCheckQuery);
+                 ResultSet loadCheckResult = loadCheckStmt.executeQuery()) {
+                if (loadCheckResult.next()) {
+                    System.out.println("Đã thực hiện load to warehouse.");
+                    return;
+                }
+            }
+
+            // 4.4 Ghi log "bắt đầu thực hiện load to warehouse"
+            String startLogQuery = "INSERT INTO log(event, status, dt_update) VALUES ('load to data warehouse', 'IP', ?)";
+            try (PreparedStatement startLogStmt = connection.prepareStatement(startLogQuery)) {
+                startLogStmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
+                startLogStmt.executeUpdate();
+                System.out.println("Bắt đầu thực hiện load to warehouse.");
+            }
+
+            // 4.5
             // Lấy tên stored procedure từ bảng control
             String procedureName = getProcedureName(connection, "load_to_dw");
 
@@ -23,6 +54,7 @@ public class LoadToWarehouse {
                 try (CallableStatement callableStatement = connection.prepareCall("{CALL " + procedureName + "()}")) {
                     callableStatement.execute();
                     System.out.println("Quá trình load to warehouse đã hoàn thành.");
+                    // 4.6
                     // Ghi log thành công
                     logSuccess(connection, "Quá trình load dữ liệu thành công.");
                 } catch (SQLException e) {
